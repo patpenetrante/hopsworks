@@ -175,7 +175,7 @@ public class FlinkJob extends YarnJob {
               flinkUser, jobUser, hadoopDir, flinkDir, flinkConfDir,
               flinkConfFile, services.getFileOperations
                   (hdfsUser.getUserName()), yarnClient, glassfishDomainDir +
-                  "/domain1/config/", services);
+                  "/domain1/config/", services, settings);
 
     } catch (IOException e) {
       LOG.log(Level.SEVERE,

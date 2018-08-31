@@ -57,13 +57,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.yarn.api.records.LocalResource;
+//import org.apache.hadoop.fs.FileStatus;
+//import org.apache.hadoop.fs.FileSystem;
+//import org.apache.hadoop.yarn.api.records.LocalResource;
+//import org.apache.hadoop.yarn.api.records.LocalResourceType;
+//import org.apache.hadoop.yarn.api.records.LocalResourceVisibility;
+import org.apache.hadoop.yarn.client.api.YarnClient;
+//import org.apache.hadoop.yarn.util.ConverterUtils;
 import org.apache.hadoop.yarn.api.records.LocalResourceType;
 import org.apache.hadoop.yarn.api.records.LocalResourceVisibility;
-import org.apache.hadoop.yarn.client.api.YarnClient;
-import org.apache.hadoop.yarn.util.ConverterUtils;
 
 /**
  * All classes in this package contain code taken from
@@ -355,62 +357,129 @@ public class FlinkYarnRunnerBuilder {
           final String flinkConfDir, final String flinkConfFile,
           DistributedFileSystemOps dfsClient,
           YarnClient yarnClient, final String certsDir,
-          AsynchronousJobExecutor services) throws IOException {
-
+          AsynchronousJobExecutor services, Settings settings) throws IOException {
+    
+    String hdfsFlinkJarPath = settings.getHdfsFlinkJarPath();
+//    String hdfsFlinkJarPath = "hdfs:///user/" + flinkUser + "/flink.jar";
     //Create the YarnRunner builder for Flink, proceed with setting values
     YarnRunner.Builder builder = new YarnRunner.Builder(Settings.FLINK_AM_MAIN);
-    YarnClusterDescriptor cluster = new YarnClusterDescriptor();
+//    YarnClusterDescriptor cluster = new YarnClusterDescriptor();
     //TODO: Change the cluster to use files from hdfs
-    cluster.setConfigurationDirectory(flinkConfDir);
-    cluster.setConfigurationFilePath(new Path(flinkConfFile));
-    cluster.setDetachedMode(detached);
+//    cluster.setConfigurationDirectory(flinkConfDir);
+//    cluster.setConfigurationFilePath(new Path(flinkConfFile));
+//    cluster.setDetachedMode(detached);
 
-    org.apache.flink.configuration.Configuration flinkConf
-            = new org.apache.flink.configuration.Configuration();
-    cluster.setFlinkConfiguration(flinkConf);
-    cluster.setJobManagerMemory(jobManagerMemoryMb);
-    cluster.setTaskManagerCount(taskManagerCount);
-    cluster.setTaskManagerMemory(taskManagerMemoryMb);
-    cluster.setTaskManagerSlots(taskManagerSlots);
-    cluster.setQueue(jobManagerQueue);
-    cluster.setLocalJarPath(new Path("file://" + flinkDir + "/flink.jar"));
+//    org.apache.flink.configuration.Configuration flinkConf
+//            = new org.apache.flink.configuration.Configuration();
+//    cluster.setFlinkConfiguration(flinkConf);
+//    cluster.setJobManagerMemory(jobManagerMemoryMb);
+//    cluster.setTaskManagerCount(taskManagerCount);
+//    cluster.setTaskManagerMemory(taskManagerMemoryMb);
+//    cluster.setTaskManagerSlots(taskManagerSlots);
+//    cluster.setQueue(jobManagerQueue);
+//    cluster.setLocalJarPath(new Path("file://" + flinkDir + "/flink.jar"));
 
     builder.setYarnClient(yarnClient);
     builder.setDfsClient(dfsClient);
     builder.setJobUser(jobUser);
-    builder.setFlinkCluster(cluster);
+//    builder.setFlinkCluster(cluster);
     
     String stagingPath = File.separator + "Projects" + File.separator + project
             + File.separator
             + Settings.PROJECT_STAGING_DIR;
     builder.localResourcesBasePath(stagingPath);
     
+    
+    /*** 2. Set job local resources, i.e. project certificates, job jar etc. ***/
+    
+    //Add hdfs prefix so the monitor knows it should find it there
+    builder.addFileToRemove("hdfs://" + stagingPath);
+    builder.addLocalResource(new LocalResourceDTO(
+        Settings.SPARK_LOCALIZED_LIB_DIR, hdfsFlinkJarPath,
+        LocalResourceVisibility.PRIVATE.toString(),
+        LocalResourceType.ARCHIVE.toString(), null), false);
+    
     //Add extra files to local resources, use filename as key
     //Get filesystem
-    if (!extraFiles.isEmpty()) {
-      if (null == dfsClient) {
-        throw new YarnDeploymentException("Could not connect to filesystem");
+//    if (!extraFiles.isEmpty()) {
+//      if (null == dfsClient) {
+//        throw new YarnDeploymentException("Could not connect to filesystem");
+//      }
+//      FileSystem fs = dfsClient.getFilesystem();
+//      for (LocalResourceDTO dto : extraFiles) {
+//        String pathToResource = dto.getPath();
+//        pathToResource = pathToResource.replaceFirst("hdfs:/*Projects",
+//                "hdfs:///Projects");
+//        pathToResource = pathToResource.replaceFirst("hdfs:/*user",
+//                "hdfs:///user");
+//        Path src = new Path(pathToResource);
+//        FileStatus scFileStat = fs.getFileStatus(src);
+//        LocalResource resource = LocalResource.newInstance(ConverterUtils.
+//                getYarnUrlFromPath(src),
+//                LocalResourceType.valueOf(dto.getType().toUpperCase()),
+//                LocalResourceVisibility.valueOf(dto.getVisibility().
+//                        toUpperCase()),
+//                scFileStat.getLen(),
+//                scFileStat.getModificationTime(),
+//                dto.getPattern());
+//        cluster.addHopsworksResource(dto.getName(), resource);
+//      }
+//    }
+
+    //Add extra files to local resources, use filename as key
+    for (LocalResourceDTO dto : extraFiles) {
+      if (dto.getName().equals(Settings.K_CERTIFICATE)
+          || dto.getName().equals(Settings.T_CERTIFICATE)
+          || dto.getName().equals(Settings.CRYPTO_MATERIAL_PASSWORD)) {
+        //Set deletion to true so that certs are removed
+        builder.addLocalResource(dto, true);
+      } else {
+        
+        builder.addToAppMasterEnvironment(YarnRunner.KEY_CLASSPATH, dto.getName());
+        //extraClassPathFiles.append(dto.getName()).append(File.pathSeparator);
       }
-      FileSystem fs = dfsClient.getFilesystem();
-      for (LocalResourceDTO dto : extraFiles) {
-        String pathToResource = dto.getPath();
-        pathToResource = pathToResource.replaceFirst("hdfs:/*Projects",
-                "hdfs:///Projects");
-        pathToResource = pathToResource.replaceFirst("hdfs:/*user",
-                "hdfs:///user");
-        Path src = new Path(pathToResource);
-        FileStatus scFileStat = fs.getFileStatus(src);
-        LocalResource resource = LocalResource.newInstance(ConverterUtils.
-                getYarnUrlFromPath(src),
-                LocalResourceType.valueOf(dto.getType().toUpperCase()),
-                LocalResourceVisibility.valueOf(dto.getVisibility().
-                        toUpperCase()),
-                scFileStat.getLen(),
-                scFileStat.getModificationTime(),
-                dto.getPattern());
-        cluster.addHopsworksResource(dto.getName(), resource);
-      }
+      builder.addLocalResource(dto);//, !appPath.startsWith("hdfs:"));
     }
+    
+    
+    
+    
+    String appExecName = Settings.FLINK_LOCRSC_FLINK_JAR;
+    String appPath = settings.getFlinkDir();
+    
+    builder.addLocalResource(new LocalResourceDTO(
+        appExecName, appPath,
+        LocalResourceVisibility.APPLICATION.toString(),
+        LocalResourceType.FILE.toString(), null),
+        !appPath.startsWith("hdfs:"));
+    builder.addToAppMasterEnvironment(YarnRunner.KEY_CLASSPATH, "$PWD");
+    StringBuilder extraClassPathFiles = new StringBuilder();
+    StringBuilder secondaryJars = new StringBuilder();
+    //Add hops-util.jar if it is a Kafka job
+    builder.addLocalResource(new LocalResourceDTO(
+        settings.getHopsUtilFilename(), settings.getHopsUtilHdfsPath(),
+        LocalResourceVisibility.APPLICATION.toString(),
+        LocalResourceType.FILE.toString(), null), false);
+
+    builder.addToAppMasterEnvironment(YarnRunner.KEY_CLASSPATH,
+        settings.getHopsUtilFilename());
+    extraClassPathFiles.append(settings.getHopsUtilFilename()).append(File.pathSeparator).
+        append(settings.getHopsLeaderElectionJarPath()).append(File.pathSeparator);
+//    builder.addToAppMasterEnvironment(YarnRunner.KEY_CLASSPATH,
+//        "$PWD/" + Settings.FLSPARK_LOCALIZED_CONF_DIR + File.pathSeparator
+//        + Settings.SPARK_LOCALIZED_CONF_DIR
+//        + File.pathSeparator + Settings.SPARK_LOCALIZED_LIB_DIR + "/*"
+//        + File.pathSeparator + Settings.SPARK_LOCRSC_APP_JAR
+//        + File.pathSeparator + Settings.SPARK_LOG4J_PROPERTIES
+//    );
+
+    
+    
+    
+    
+    
+    
+
     addSystemProperty(Settings.HOPSWORKS_REST_ENDPOINT_PROPERTY, serviceProps.getRestEndpoint());
     if (serviceProps.getKafka() != null) {
       
@@ -426,7 +495,7 @@ public class FlinkYarnRunnerBuilder {
       for (String s : sysProps.keySet()) {
         String option = YarnRunner.escapeForShell("-D" + s + "=" + sysProps.get(s));
         builder.addJavaOption(option);
-        cluster.addHopsworksParam(option);
+//        cluster.addHopsworksParam(option);
         dynamicPropertiesEncoded.append(s).append("=").append(sysProps.get(s)).
                 append("@@");
       }
@@ -437,10 +506,10 @@ public class FlinkYarnRunnerBuilder {
        * flink-yarn/src/main/java/org/apache/flink/yarn/cli/FlinkYarnSessionCli.java
        */
       if (dynamicPropertiesEncoded.length() > 0) {
-        cluster.setDynamicPropertiesEncoded(dynamicPropertiesEncoded.
-                substring(0,
-                        dynamicPropertiesEncoded.
-                                lastIndexOf("@@")));
+//        cluster.setDynamicPropertiesEncoded(dynamicPropertiesEncoded.
+//                substring(0,
+//                        dynamicPropertiesEncoded.
+//                                lastIndexOf("@@")));
       }
     }
 
@@ -457,7 +526,7 @@ public class FlinkYarnRunnerBuilder {
     } else {
       name = customName;
     }
-    cluster.setName(name);
+//    cluster.setName(name);
     //Set up command
     StringBuilder amargs = new StringBuilder("");
     //Pass job arguments
@@ -467,6 +536,41 @@ public class FlinkYarnRunnerBuilder {
     if (!amargs.toString().equals("")) {
       builder.amArgs(amargs.toString());
     }
+    
+    // copy/paste from hopsworks/common/jobs/flink/AbstractYarnClusterDescriptor.java
+     // Setup CLASSPATH and environment variables for ApplicationMaster
+     
+//     Path remotePathJar = Utils.setupLocalResource(fs, appId.toString(),
+//            flinkJarPath, appMasterJar, fs.getHomeDirectory());
+//     
+//    final Map<String, String> appMasterEnv = new HashMap<>();
+//    // set user specified app master environment variables
+//    appMasterEnv.putAll(Utils.getEnvironmentVariables(
+//            ConfigConstants.YARN_APPLICATION_MASTER_ENV_PREFIX,
+//            flinkConfiguration));
+//    // set Flink app class path
+//    appMasterEnv.put(YarnConfigKeys.ENV_FLINK_CLASSPATH, classPathBuilder.
+//            toString());
+//
+//    // set Flink on YARN internal configuration values
+//    appMasterEnv.put(YarnConfigKeys.ENV_TM_COUNT, String.valueOf(
+//            taskManagerCount));
+//    appMasterEnv.put(YarnConfigKeys.ENV_TM_MEMORY, String.valueOf(
+//            taskManagerMemoryMb));
+//    appMasterEnv.put(YarnConfigKeys.FLINK_JAR_PATH, remotePathJar.toString());
+//    appMasterEnv.put(YarnConfigKeys.ENV_APP_ID, appId.toString());
+//    appMasterEnv.put(YarnConfigKeys.ENV_CLIENT_HOME_DIR, fs.getHomeDirectory().
+//            toString());
+//    appMasterEnv.put(YarnConfigKeys.ENV_CLIENT_SHIP_FILES, envShipFileList.
+//            toString());
+//    appMasterEnv.put(YarnConfigKeys.ENV_CLIENT_USERNAME, UserGroupInformation.
+//            getCurrentUser().getShortUserName());
+//    appMasterEnv.put(YarnConfigKeys.ENV_SLOTS, String.valueOf(slots));
+//    appMasterEnv.put(YarnConfigKeys.ENV_DETACHED, String.valueOf(detached));
+//    appMasterEnv.put(YarnConfigKeys.ENV_ZOOKEEPER_NAMESPACE,
+//            getZookeeperNamespace());
+    ////// end copy/paste
+    
     return builder.build(flinkDir, JobType.FLINK,services);
   }
 
