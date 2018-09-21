@@ -43,6 +43,7 @@ public enum JobType {
 
   YARN("Yarn"),
   FLINK("Flink"),
+  FLINK_LEGACY("Flink_Legacy"),
   SPARK("Spark"),
   PYSPARK("PySpark"),
   TFSPARK("TensorFlowOnSpark"),

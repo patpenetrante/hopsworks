@@ -420,7 +420,7 @@ public class HopsUtils {
         try {
           if (jobType != null) {
             switch (jobType) {
-              case FLINK:
+              case FLINK_LEGACY:
                 File appDir = Paths.get(flinkCertsDir, applicationId).toFile();
                 if (!appDir.exists()) {
                   appDir.mkdir();
@@ -460,6 +460,7 @@ public class HopsUtils {
               case PYSPARK:
               case TFSPARK:
               case SPARK:
+              case FLINK:
                 Map<String, File> certs = new HashMap<>();
                 certs.put(Settings.K_CERTIFICATE, new File(
                     localTmpDir + File.separator + kCertName));

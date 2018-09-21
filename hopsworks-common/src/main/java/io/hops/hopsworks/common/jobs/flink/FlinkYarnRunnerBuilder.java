@@ -39,13 +39,14 @@
 
 package io.hops.hopsworks.common.jobs.flink;
 
-import io.hops.hopsworks.common.jobs.AsynchronousJobExecutor;
 import io.hops.hopsworks.common.hdfs.DistributedFileSystemOps;
+import io.hops.hopsworks.common.jobs.AsynchronousJobExecutor;
 import io.hops.hopsworks.common.jobs.jobhistory.JobType;
 import io.hops.hopsworks.common.jobs.yarn.LocalResourceDTO;
 import io.hops.hopsworks.common.jobs.yarn.ServiceProperties;
 import io.hops.hopsworks.common.jobs.yarn.YarnRunner;
 import io.hops.hopsworks.common.util.Settings;
+import io.hops.hopsworks.common.util.templates.ConfigProperty;
 import java.io.File;
 import org.apache.hadoop.fs.Path;
 
@@ -67,6 +68,8 @@ import org.apache.hadoop.yarn.client.api.YarnClient;
 import org.apache.hadoop.yarn.api.records.LocalResourceType;
 import org.apache.hadoop.yarn.api.records.LocalResourceVisibility;
 
+
+// TODO: Delete comment below??
 /**
  * All classes in this package contain code taken from
  * https://github.com/apache/hadoop-common/blob/trunk/hadoop-yarn-project/
@@ -87,26 +90,27 @@ public class FlinkYarnRunnerBuilder {
 
   private static final Logger LOGGER = Logger.
           getLogger(FlinkYarnRunnerBuilder.class.getName());
-  /**
-   * Constants, all starting with ENV_ are used as environment variables to
-   * pass values from the Client to the Application Master.
-   */
-  public final static String ENV_TM_MEMORY = "_CLIENT_TM_MEMORY";
-  public final static String ENV_TM_COUNT = "_CLIENT_TM_COUNT";
-  public final static String ENV_APP_ID = "_APP_ID";
-  public final static String FLINK_JAR_PATH = "_FLINK_JAR_PATH"; // the Flink jar resource location (in HDFS).
-  public static final String ENV_CLIENT_HOME_DIR = "_CLIENT_HOME_DIR";
-  public static final String ENV_CLIENT_SHIP_FILES = "_CLIENT_SHIP_FILES";
-  public static final String ENV_CLIENT_USERNAME = "_CLIENT_USERNAME";
-  public static final String ENV_SLOTS = "_SLOTS";
-  public static final String ENV_DETACHED = "_DETACHED";
-  public static final String ENV_STREAMING_MODE = "_STREAMING_MODE";
-  public static final String ENV_DYNAMIC_PROPERTIES = "_DYNAMIC_PROPERTIES";
-  public static final String CONFIG_FILE_LOGBACK_NAME = "logback.xml";
-  public static final String CONFIG_FILE_LOG4J_NAME = "log4j.properties";
-  /**
-   * Minimum memory requirements, checked by the Client.
-   */
+  
+//  /**
+//   * Constants, all starting with ENV_ are used as environment variables to
+//   * pass values from the Client to the Application Master.
+//   */
+//  public final static String ENV_TM_MEMORY = "_CLIENT_TM_MEMORY";
+//  public final static String ENV_TM_COUNT = "_CLIENT_TM_COUNT";
+//  public final static String ENV_APP_ID = "_APP_ID";
+//  public final static String FLINK_JAR_PATH = "_FLINK_JAR_PATH"; // the Flink jar resource location (in HDFS).
+//  public static final String ENV_CLIENT_HOME_DIR = "_CLIENT_HOME_DIR";
+//  public static final String ENV_CLIENT_SHIP_FILES = "_CLIENT_SHIP_FILES";
+//  public static final String ENV_CLIENT_USERNAME = "_CLIENT_USERNAME";
+//  public static final String ENV_SLOTS = "_SLOTS";
+//  public static final String ENV_DETACHED = "_DETACHED";
+//  public static final String ENV_STREAMING_MODE = "_STREAMING_MODE";
+//  public static final String ENV_DYNAMIC_PROPERTIES = "_DYNAMIC_PROPERTIES";
+//  public static final String CONFIG_FILE_LOGBACK_NAME = "logback.xml";
+//  public static final String CONFIG_FILE_LOG4J_NAME = "log4j.properties";
+//  /**
+//   * Minimum memory requirements, checked by the Client.
+//   */
   private static final int MIN_JM_MEMORY = 768; // the minimum memory should be higher than the min heap cutoff
   private static final int MIN_TM_MEMORY = 768;
 
@@ -359,10 +363,26 @@ public class FlinkYarnRunnerBuilder {
           YarnClient yarnClient, final String certsDir,
           AsynchronousJobExecutor services, Settings settings) throws IOException {
     
+
+    Map<String, ConfigProperty> jobHopsworksProps = new HashMap<>();
+    JobType jobType =JobType.FLINK;
+    String appPath = this.appJarPath;
+    
     String hdfsFlinkJarPath = settings.getHdfsFlinkJarPath();
 //    String hdfsFlinkJarPath = "hdfs:///user/" + flinkUser + "/flink.jar";
-    //Create the YarnRunner builder for Flink, proceed with setting values
+
+
+//Create the YarnRunner builder for Flink, proceed with setting values
     YarnRunner.Builder builder = new YarnRunner.Builder(Settings.FLINK_AM_MAIN);
+    builder.setJobType(jobType);
+    builder.setYarnClient(yarnClient);
+    builder.setDfsClient(dfsClient);
+    builder.setJobUser(jobUser);
+    //builder.setJobType(JobType.FLINK);
+    builder.setAppJarPath(appJarPath);
+    builder.setParallelism(parallelism);
+
+    
 //    YarnClusterDescriptor cluster = new YarnClusterDescriptor();
     //TODO: Change the cluster to use files from hdfs
 //    cluster.setConfigurationDirectory(flinkConfDir);
@@ -379,14 +399,15 @@ public class FlinkYarnRunnerBuilder {
 //    cluster.setQueue(jobManagerQueue);
 //    cluster.setLocalJarPath(new Path("file://" + flinkDir + "/flink.jar"));
 
-    builder.setYarnClient(yarnClient);
-    builder.setDfsClient(dfsClient);
-    builder.setJobUser(jobUser);
 //    builder.setFlinkCluster(cluster);
+    
+    /*** 1. Set stagingPath ***/
     
     String stagingPath = File.separator + "Projects" + File.separator + project
             + File.separator
-            + Settings.PROJECT_STAGING_DIR;
+            + Settings.PROJECT_STAGING_DIR
+            + File.separator + "/.sparkjobstaging-"
+            + File.separator+ YarnRunner.APPID_PLACEHOLDER;
     builder.localResourcesBasePath(stagingPath);
     
     
@@ -394,10 +415,12 @@ public class FlinkYarnRunnerBuilder {
     
     //Add hdfs prefix so the monitor knows it should find it there
     builder.addFileToRemove("hdfs://" + stagingPath);
-    builder.addLocalResource(new LocalResourceDTO(
-        Settings.SPARK_LOCALIZED_LIB_DIR, hdfsFlinkJarPath,
-        LocalResourceVisibility.PRIVATE.toString(),
-        LocalResourceType.ARCHIVE.toString(), null), false);
+    
+    
+//    builder.addLocalResource(new LocalResourceDTO(
+//        Settings.SPARK_LOCALIZED_LIB_DIR, hdfsFlinkJarPath,
+//        LocalResourceVisibility.PRIVATE.toString(),
+//        LocalResourceType.ARCHIVE.toString(), null), false);
     
     //Add extra files to local resources, use filename as key
     //Get filesystem
@@ -426,26 +449,16 @@ public class FlinkYarnRunnerBuilder {
 //      }
 //    }
 
-    //Add extra files to local resources, use filename as key
-    for (LocalResourceDTO dto : extraFiles) {
-      if (dto.getName().equals(Settings.K_CERTIFICATE)
-          || dto.getName().equals(Settings.T_CERTIFICATE)
-          || dto.getName().equals(Settings.CRYPTO_MATERIAL_PASSWORD)) {
-        //Set deletion to true so that certs are removed
-        builder.addLocalResource(dto, true);
-      } else {
-        
-        builder.addToAppMasterEnvironment(YarnRunner.KEY_CLASSPATH, dto.getName());
-        //extraClassPathFiles.append(dto.getName()).append(File.pathSeparator);
-      }
-      builder.addLocalResource(dto);//, !appPath.startsWith("hdfs:"));
-    }
+
+
+
+
+
     
     
-    
-    
+    //Add app file
     String appExecName = Settings.FLINK_LOCRSC_FLINK_JAR;
-    String appPath = settings.getFlinkDir();
+    
     
     builder.addLocalResource(new LocalResourceDTO(
         appExecName, appPath,
@@ -475,11 +488,45 @@ public class FlinkYarnRunnerBuilder {
 
     
     
-    
-    
-    
-    
 
+    //Add extra files to local resources, use filename as key
+    for (LocalResourceDTO dto : extraFiles) {
+      if (dto.getName().equals(Settings.K_CERTIFICATE)
+          || dto.getName().equals(Settings.T_CERTIFICATE)
+          || dto.getName().equals(Settings.CRYPTO_MATERIAL_PASSWORD)) {
+        //Set deletion to true so that certs are removed
+        builder.addLocalResource(dto, true);
+      } else {
+        
+        builder.addToAppMasterEnvironment(YarnRunner.KEY_CLASSPATH, dto.getName());
+        extraClassPathFiles.append(dto.getName()).append(File.pathSeparator);
+      }
+      builder.addLocalResource(dto, !appPath.startsWith("hdfs:"));
+    }
+    
+    
+    //Set Flink specific environment variables
+    //builder.addToAppMasterEnvironment("SPARK_YARN_MODE", "true");
+    //builder.addToAppMasterEnvironment("SPARK_YARN_STAGING_DIR", stagingPath);
+    //builder.addToAppMasterEnvironment("SPARK_USER", jobUser);
+    builder.addToAppMasterEnvironment("HADOOP_USER_NAME", jobUser);
+    builder.addToAppMasterEnvironment("HDFS_USER", jobUser);
+    builder.addToAppMasterEnvironment("HADOOP_HOME", settings.getHadoopSymbolicLinkDir());
+    builder.addToAppMasterEnvironment("HADOOP_VERSION", settings.getHadoopVersion());
+//    jobHopsworksProps.put(Settings.SPARK_EXECUTORENV_HADOOP_USER_NAME,
+//        new ConfigProperty(
+//            Settings.SPARK_EXECUTORENV_HADOOP_USER_NAME,
+//            HopsUtils.IGNORE,
+//            jobUser));
+//    jobHopsworksProps.put(Settings.SPARK_EXECUTORENV_HDFS_USER,
+//        new ConfigProperty(
+//            Settings.SPARK_EXECUTORENV_HDFS_USER,
+//            HopsUtils.IGNORE,
+//            jobUser));
+//
+//    
+    
+/// ?????
     addSystemProperty(Settings.HOPSWORKS_REST_ENDPOINT_PROPERTY, serviceProps.getRestEndpoint());
     if (serviceProps.getKafka() != null) {
       
@@ -505,28 +552,29 @@ public class FlinkYarnRunnerBuilder {
        * https://github.com/apache/flink/blob/b410c393c960f55c09fadd4f22732d06f801b938/
        * flink-yarn/src/main/java/org/apache/flink/yarn/cli/FlinkYarnSessionCli.java
        */
-      if (dynamicPropertiesEncoded.length() > 0) {
+//      if (dynamicPropertiesEncoded.length() > 0) {
 //        cluster.setDynamicPropertiesEncoded(dynamicPropertiesEncoded.
 //                substring(0,
 //                        dynamicPropertiesEncoded.
 //                                lastIndexOf("@@")));
-      }
+//      }
     }
+////////????????????
 
-    builder.setJobType(JobType.FLINK);
-    builder.setAppJarPath(appJarPath);
-    builder.setParallelism(parallelism);
-
-    String name;
-    if (customName == null) {
-      name = "Flink session with " + taskManagerCount + " TaskManagers";
-      if (detached) {
-        name += " (detached)";
-      }
-    } else {
-      name = customName;
-    }
+//    String name;
+//    if (customName == null) {
+//      name = "Flink session with " + taskManagerCount + " TaskManagers";
+//      if (detached) {
+//        name += " (detached)";
+//      }
+//    } else {
+//      name = customName;
+//    }
 //    cluster.setName(name);
+
+
+
+
     //Set up command
     StringBuilder amargs = new StringBuilder("");
     //Pass job arguments
@@ -537,9 +585,18 @@ public class FlinkYarnRunnerBuilder {
       builder.amArgs(amargs.toString());
     }
     
+    //???????
+    //Set up Yarn properties
+    //builder.amMemory(driverMemory);
+    //builder.amVCores(driverCores);
+    //builder.amQueue(driverQueue);
+
+    //Set app name
+    //builder.appName(jobName);
+    
     // copy/paste from hopsworks/common/jobs/flink/AbstractYarnClusterDescriptor.java
      // Setup CLASSPATH and environment variables for ApplicationMaster
-     
+//     
 //     Path remotePathJar = Utils.setupLocalResource(fs, appId.toString(),
 //            flinkJarPath, appMasterJar, fs.getHomeDirectory());
 //     
@@ -569,7 +626,7 @@ public class FlinkYarnRunnerBuilder {
 //    appMasterEnv.put(YarnConfigKeys.ENV_DETACHED, String.valueOf(detached));
 //    appMasterEnv.put(YarnConfigKeys.ENV_ZOOKEEPER_NAMESPACE,
 //            getZookeeperNamespace());
-    ////// end copy/paste
+  ////// end copy/paste
     
     return builder.build(flinkDir, JobType.FLINK,services);
   }
