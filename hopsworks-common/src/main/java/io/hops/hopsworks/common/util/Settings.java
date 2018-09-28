@@ -1069,7 +1069,7 @@ public class Settings implements Serializable {
   public static final String FLINK_AM_MAIN
 //      = "org.apache.flink.yarn.ApplicationMaster";
 //      = "org.apache.flink.yarn.YarnApplicationMasterRunner";
-      = "org.apache.flink.yarn.entrypoint.YarnJobClusterEntrypoint";
+     = "org.apache.flink.yarn.entrypoint.YarnJobClusterEntrypoint";
   public static final int FLINK_APP_MASTER_MEMORY = 768;
 
   //TensorFlow constants

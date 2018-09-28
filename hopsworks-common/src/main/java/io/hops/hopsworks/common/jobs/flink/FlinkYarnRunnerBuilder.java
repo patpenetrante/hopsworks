@@ -378,7 +378,6 @@ public class FlinkYarnRunnerBuilder {
     builder.setYarnClient(yarnClient);
     builder.setDfsClient(dfsClient);
     builder.setJobUser(jobUser);
-    //builder.setJobType(JobType.FLINK);
     builder.setAppJarPath(appJarPath);
     builder.setParallelism(parallelism);
 
@@ -478,13 +477,9 @@ public class FlinkYarnRunnerBuilder {
         settings.getHopsUtilFilename());
     extraClassPathFiles.append(settings.getHopsUtilFilename()).append(File.pathSeparator).
         append(settings.getHopsLeaderElectionJarPath()).append(File.pathSeparator);
-//    builder.addToAppMasterEnvironment(YarnRunner.KEY_CLASSPATH,
-//        "$PWD/" + Settings.FLSPARK_LOCALIZED_CONF_DIR + File.pathSeparator
-//        + Settings.SPARK_LOCALIZED_CONF_DIR
-//        + File.pathSeparator + Settings.SPARK_LOCALIZED_LIB_DIR + "/*"
-//        + File.pathSeparator + Settings.SPARK_LOCRSC_APP_JAR
-//        + File.pathSeparator + Settings.SPARK_LOG4J_PROPERTIES
-//    );
+    builder.addToAppMasterEnvironment(YarnRunner.KEY_CLASSPATH,
+        settings.getFlinkDefaultClasspath()
+    );
 
     
     
