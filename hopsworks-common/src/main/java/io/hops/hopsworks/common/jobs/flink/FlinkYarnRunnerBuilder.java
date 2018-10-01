@@ -64,6 +64,9 @@ import org.apache.hadoop.yarn.api.records.LocalResourceType;
 import org.apache.hadoop.yarn.api.records.LocalResourceVisibility;
 import org.apache.hadoop.yarn.client.api.YarnClient;
 import org.apache.hadoop.yarn.util.ConverterUtils;
+import org.apache.hadoop.yarn.conf.YarnConfiguration;
+import org.apache.flink.yarn.YarnClusterDescriptor;
+import org.apache.flink.client.deployment.ClusterSpecification;
 
 /**
  * All classes in this package contain code taken from
@@ -359,19 +362,30 @@ public class FlinkYarnRunnerBuilder {
 
     //Create the YarnRunner builder for Flink, proceed with setting values
     YarnRunner.Builder builder = new YarnRunner.Builder(Settings.FLINK_AM_MAIN);
-    YarnClusterDescriptor cluster = new YarnClusterDescriptor();
-    //TODO: Change the cluster to use files from hdfs
-    cluster.setConfigurationDirectory(flinkConfDir);
-    cluster.setConfigurationFilePath(new Path(flinkConfFile));
-    cluster.setDetachedMode(detached);
-
     org.apache.flink.configuration.Configuration flinkConf
             = new org.apache.flink.configuration.Configuration();
-    cluster.setFlinkConfiguration(flinkConf);
-    cluster.setJobManagerMemory(jobManagerMemoryMb);
-    cluster.setTaskManagerCount(taskManagerCount);
-    cluster.setTaskManagerMemory(taskManagerMemoryMb);
-    cluster.setTaskManagerSlots(taskManagerSlots);
+    YarnClusterDescriptor cluster = new YarnClusterDescriptor(flinkConf,
+            (YarnConfiguration)yarnClient.getConfig(), configurationDirectory, yarnClient, true);
+    //TODO: Change the cluster to use files from hdfs
+    //cluster.setConfigurationDirectory(flinkConfDir);
+    //cluster.setConfigurationFilePath(new Path(flinkConfFile));
+    //cluster.setDetachedMode(detached);
+
+
+    //cluster.setFlinkConfiguration(flinkConf);
+    //cluster.setJobManagerMemory(jobManagerMemoryMb);
+    //cluster.setTaskManagerCount(taskManagerCount);
+    //cluster.setTaskManagerMemory(taskManagerMemoryMb);
+    //cluster.setTaskManagerSlots(taskManagerSlots);
+    
+    
+    ClusterSpecification clusterSpecification = new ClusterSpecification.ClusterSpecificationBuilder()
+                 .setMasterMemoryMB(jobManagerMemoryMb)
+                 .setTaskManagerMemoryMB(taskManagerMemoryMb)
+                 .setSlotsPerTaskManager(taskManagerSlots)
+                 .createClusterSpecification();
+    
+    
     cluster.setQueue(jobManagerQueue);
     cluster.setLocalJarPath(new Path("file://" + flinkDir + "/flink.jar"));
 
@@ -408,7 +422,7 @@ public class FlinkYarnRunnerBuilder {
                 scFileStat.getLen(),
                 scFileStat.getModificationTime(),
                 dto.getPattern());
-        cluster.addHopsworksResource(dto.getName(), resource);
+//TOCHECK: Ahmad        cluster.addHopsworksResource(dto.getName(), resource);
       }
     }
     addSystemProperty(Settings.HOPSWORKS_REST_ENDPOINT_PROPERTY, serviceProps.getRestEndpoint());
@@ -426,7 +440,7 @@ public class FlinkYarnRunnerBuilder {
       for (String s : sysProps.keySet()) {
         String option = YarnRunner.escapeForShell("-D" + s + "=" + sysProps.get(s));
         builder.addJavaOption(option);
-        cluster.addHopsworksParam(option);
+ //TOCHECK: Ahmad       cluster.addHopsworksParam(option);
         dynamicPropertiesEncoded.append(s).append("=").append(sysProps.get(s)).
                 append("@@");
       }
