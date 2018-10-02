@@ -362,10 +362,12 @@ public class FlinkYarnRunnerBuilder {
 
     //Create the YarnRunner builder for Flink, proceed with setting values
     YarnRunner.Builder builder = new YarnRunner.Builder(Settings.FLINK_AM_MAIN);
+    //TODO: Ahmad! Check flinkConf and yarnConf initialized correctly!
     org.apache.flink.configuration.Configuration flinkConf
             = new org.apache.flink.configuration.Configuration();
+    YarnConfiguration yarnConf = new YarnConfiguration(yarnClient.getConfig());
     YarnClusterDescriptor cluster = new YarnClusterDescriptor(flinkConf,
-            (YarnConfiguration)yarnClient.getConfig(), configurationDirectory, yarnClient, true);
+            yarnConf, flinkConfDir, yarnClient, true);
     //TODO: Change the cluster to use files from hdfs
     //cluster.setConfigurationDirectory(flinkConfDir);
     //cluster.setConfigurationFilePath(new Path(flinkConfFile));
@@ -383,6 +385,7 @@ public class FlinkYarnRunnerBuilder {
                  .setMasterMemoryMB(jobManagerMemoryMb)
                  .setTaskManagerMemoryMB(taskManagerMemoryMb)
                  .setSlotsPerTaskManager(taskManagerSlots)
+                 .setNumberTaskManagers(taskManagerCount)
                  .createClusterSpecification();
     
     

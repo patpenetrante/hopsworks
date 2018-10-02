@@ -302,6 +302,8 @@ public class YarnRunner {
       monitor = new YarnMonitor(appId, newYarnClientWrapper, ycs);
 
     } else if (jobType == JobType.FLINK) {
+      logger.log(Level.INFO,
+          "FLINK: YarnRunner got a Flink Job!", appId);
       // Objects needed for materializing user certificates
       //TOCHECK: Ahmad     flinkCluster.setCertsObjects(services, project, username, javaOptions);
       
@@ -339,6 +341,7 @@ public class YarnRunner {
       //Copy job jar locaclly so that Flink client has access to it 
       //in YarnRunner
       FileSystem fs = FileSystem.get(conf);
+      logger.log(Level.INFO, "FLINK: Copying files ", appJarPath);
       fs.copyToLocalFile(new Path(appJarPath), new Path(localPathAppJarDir + "/"
           + appJarName));
       //app.jar path 
@@ -352,17 +355,18 @@ public class YarnRunner {
         URL flinkURL = new File(serviceDir + "/"
             + Settings.FLINK_LOCRSC_FLINK_JAR).toURI().toURL();
         classpaths.add(flinkURL);
+        logger.log(Level.INFO, "FLINK: Packaging the Flink program...");
         PackagedProgram packagedProgram = new PackagedProgram(file, classpaths, args);
         JobGraph jobGraph = PackagedProgramUtils.createJobGraph(packagedProgram,
                 flinkCluster.getFlinkConfiguration(), parallelism);
      
-
+        logger.log(Level.INFO, "FLINK: Attempting to deploy a job cluster..");
         ClusterClient<ApplicationId> clusterClient = 
                 flinkCluster.deployJobCluster(flinkClusterSpecification, jobGraph, true);
         //client.run(program, parallelism);
         
         appId = clusterClient.getClusterId();
-        
+        logger.log(Level.INFO, "FLINK: Finished deploying cluster with ID {0}", appId.toString());
         
         
         fillInAppid(appId.toString());
@@ -370,15 +374,18 @@ public class YarnRunner {
  
         
       } catch (ProgramInvocationException ex) {
-        logger.log(Level.WARNING, "Error while submitting Flink job to cluster",
+        logger.log(Level.WARNING, "FLINK: Error while submitting Flink job to cluster ",
             ex);
         //Kill the flink job here
         Runtime rt = Runtime.getRuntime();
         rt.exec(services.getSettings().getHadoopSymbolicLinkDir() + "/bin/yarn application -kill " + appId.toString());
-        throw new IOException("Error while submitting Flink job to cluster:"+ex.getMessage());
+        throw new IOException("FLINK: Error while submitting Flink job to cluster,"
+                + " ProgramInvocationException : " + ex.getMessage());
       } catch (ClusterDeploymentException ex) {
           // TODO: Ahmad handle this exception
-        Logger.getLogger(YarnRunner.class.getName()).log(Level.SEVERE, null, ex);
+        logger.log(Level.WARNING, "FLINK: Error while submitting Flink job to cluster ", ex);
+        throw new IOException("FLINK: Error while submitting Flink job to cluster,"
+                + " ClusterDeploymentException : " + ex.getMessage());
       } finally {
         //Remove local flink app jar
         FileUtils.deleteDirectory(localPathAppJarDir);
@@ -386,7 +393,7 @@ public class YarnRunner {
         appId = null;
         appContext = null;
         //Try to delete any local certificates for this project
-        logger.log(Level.INFO, "Deleting local flink app jar:{0}", appJarPath);
+        logger.log(Level.INFO, "FLINK: Deleting local flink app jar:{0}", appJarPath);
       }
 
     } else if (jobType == JobType.TENSORFLOW) {
