@@ -113,6 +113,7 @@ public class FlinkYarnRunnerBuilder {
 
   //Jar paths for AM and app
   private String appJarPath;
+  private String appMainClass;
   //Optional parameters
   private final List<String> jobArgs = new ArrayList<>();
   private List<LocalResourceDTO> extraFiles = new ArrayList<>();
@@ -148,6 +149,7 @@ public class FlinkYarnRunnerBuilder {
               "Name of the main class cannot be empty!");
     }
     this.appJarPath = appJarPath;
+    this.appMainClass = mainClass;
   }
 
   public FlinkYarnRunnerBuilder addAllJobArgs(String[] jobArgs) {
@@ -396,6 +398,7 @@ public class FlinkYarnRunnerBuilder {
     builder.setDfsClient(dfsClient);
     builder.setJobUser(jobUser);
     builder.setFlinkCluster(cluster);
+    builder.setFlinkClusterSpecification(clusterSpecification);
     
     String stagingPath = File.separator + "Projects" + File.separator + project
             + File.separator
@@ -463,6 +466,7 @@ public class FlinkYarnRunnerBuilder {
 
     builder.setJobType(JobType.FLINK);
     builder.setAppJarPath(appJarPath);
+    builder.setAppMainClass(appMainClass);
     builder.setParallelism(parallelism);
 
     String name;
@@ -476,6 +480,7 @@ public class FlinkYarnRunnerBuilder {
     }
     cluster.setName(name);
     //Set up command
+    // TODO (Ahmad): rename builder.amArgs to builder.jobArgs??
     StringBuilder amargs = new StringBuilder("");
     //Pass job arguments
     for (String s : jobArgs) {
