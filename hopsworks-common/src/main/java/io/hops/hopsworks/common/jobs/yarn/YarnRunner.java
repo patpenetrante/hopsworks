@@ -45,7 +45,7 @@ import io.hops.hopsworks.common.hdfs.DistributedFsService;
 import io.hops.hopsworks.common.hdfs.HdfsUsersController;
 import io.hops.hopsworks.common.hdfs.Utils;
 import io.hops.hopsworks.common.jobs.AsynchronousJobExecutor;
-import org.apache.flink.yarn.YarnClusterDescriptor;
+import io.hops.hopsworks.common.jobs.flink.HopsYarnClusterDescriptor;
 import io.hops.hopsworks.common.jobs.jobhistory.JobType;
 import io.hops.hopsworks.common.util.HopsUtils;
 import io.hops.hopsworks.common.util.IoUtils;
@@ -118,7 +118,7 @@ public class YarnRunner {
   private JobType jobType;
   //The parallelism parameter of Flink
   private int parallelism;
-  private YarnClusterDescriptor flinkCluster;
+  private HopsYarnClusterDescriptor flinkCluster;
   private ClusterSpecification flinkClusterSpecification;
   private Client tfClient;
   private String appJarPath;
@@ -307,13 +307,7 @@ public class YarnRunner {
           "FLINK: YarnRunner got a Flink Job!", appId);
       // Objects needed for materializing user certificates
       //TOCHECK: Ahmad     flinkCluster.setCertsObjects(services, project, username, javaOptions);
-   // When Hops RPC TLS is enabled, Yarn will take care of application certificate
-      if (!services.getSettings().getHopsRpcTls()) {
-        copyUserCertificates(project, jobType, dfso, username,
-            appId.toString());
-      }
 
-      
       
       
       // TODO (Ahmad): is this needed???
@@ -368,14 +362,51 @@ public class YarnRunner {
         URL beamRunnerURL = new File(serviceDir + "/lib/beam-runners-flink_2.11-2.6.0.jar").toURI().toURL();        
         URL beamHarnessURL = new File(serviceDir + "/lib/beam-sdks-java-harness-2.6.0.jar").toURI().toURL();
         URL beamHdfsURL = new File(serviceDir + "/lib/beam-sdks-java-io-hadoop-file-system-2.6.0.jar").toURI().toURL();
+
+        classpaths.add(beamHdfsURL);
         classpaths.add(flinkURL);
         classpaths.add(beamRunnerURL);
         classpaths.add(beamHarnessURL);
-        classpaths.add(beamHdfsURL);
+
         logger.log(Level.INFO, "FLINK: Packaging the Flink program...");
         PackagedProgram packagedProgram = new PackagedProgram(file, classpaths, appMainClass, args);
         JobGraph jobGraph = PackagedProgramUtils.createJobGraph(packagedProgram,
                 flinkCluster.getFlinkConfiguration(), parallelism);
+
+        // create app
+        YarnClientApplication yarnApplication = yarnClient.createApplication();
+        GetNewApplicationResponse appResponse = yarnApplication.getNewApplicationResponse();
+        flinkCluster.setYarnApplication(yarnApplication);
+        flinkCluster.setAppResponse(appResponse);
+
+        appId = appResponse.getApplicationId();
+        //And replace all occurences of $APPID with the real id.
+        fillInAppid(appId.toString());
+
+
+        // TODO (Ahmad): Didn't work!
+        //   java.io.FileNotFoundException:
+        //   hdfs:/user/spark/cacerts.jks/application_1537808450738_0015/Flinking__meb10000__kstore.jks
+        //   (No such file or directory)
+        // When Hops RPC TLS is enabled, Yarn will take care of application certificate
+        // if (!services.getSettings().getHopsRpcTls()) {
+        //   copyUserCertificates(project, jobType, dfso, username,
+        //            appId.toString());
+        //  }
+
+        Map<String, String> jobSystemProperties = new HashMap<>(3);
+        // When Hops RPC TLS is enabled, Yarn will take care of application certificate
+        // Certificates are materialized locally so DFSClient can be set to null
+        // LocalResources are not used by Flink, so set it null
+        if (!services.getSettings().getHopsRpcTls()) {
+          HopsUtils.copyProjectUserCerts(project, username,
+                  services.getSettings().getHopsworksTmpCertDir(),
+                  services.getSettings().getHdfsTmpCertDir(), JobType.FLINK,
+                  null, null, jobSystemProperties,
+                  services.getSettings().getFlinkKafkaCertDir(),
+                  appResponse.getApplicationId().toString(),
+                  services.getCertificateMaterializer(), services.getSettings().getHopsRpcTls());
+        }
      
         logger.log(Level.INFO, "FLINK: Attempting to deploy a job cluster..");
         ClusterClient<ApplicationId> clusterClient = 
@@ -839,7 +870,7 @@ public class YarnRunner {
     private JobType jobType;
     //Flink parallelism
     private int parallelism;
-    private YarnClusterDescriptor flinkCluster;
+    private HopsYarnClusterDescriptor flinkCluster;
     private String appJarPath;
     private String appMainClass;
     //TensorFlow client
@@ -1001,7 +1032,7 @@ public class YarnRunner {
       this.parallelism = parallelism;
     }
 
-    public void setFlinkCluster(YarnClusterDescriptor flinkCluster) {
+    public void setFlinkCluster(HopsYarnClusterDescriptor flinkCluster) {
       this.flinkCluster = flinkCluster;
     }
     

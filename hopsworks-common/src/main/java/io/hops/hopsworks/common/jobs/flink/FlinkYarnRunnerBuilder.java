@@ -65,7 +65,6 @@ import org.apache.hadoop.yarn.api.records.LocalResourceVisibility;
 import org.apache.hadoop.yarn.client.api.YarnClient;
 import org.apache.hadoop.yarn.util.ConverterUtils;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
-import org.apache.flink.yarn.YarnClusterDescriptor;
 import org.apache.flink.client.deployment.ClusterSpecification;
 
 /**
@@ -368,7 +367,7 @@ public class FlinkYarnRunnerBuilder {
     org.apache.flink.configuration.Configuration flinkConf
             = new org.apache.flink.configuration.Configuration();
     YarnConfiguration yarnConf = new YarnConfiguration(yarnClient.getConfig());
-    YarnClusterDescriptor cluster = new YarnClusterDescriptor(flinkConf,
+    HopsYarnClusterDescriptor cluster = new HopsYarnClusterDescriptor(flinkConf,
             yarnConf, flinkConfDir, yarnClient, true);
     //TODO: Change the cluster to use files from hdfs
     //cluster.setConfigurationDirectory(flinkConfDir);

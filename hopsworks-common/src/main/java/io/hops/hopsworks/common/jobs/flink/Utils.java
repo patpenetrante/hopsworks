@@ -232,7 +232,8 @@ public final class Utils {
     return localResource;
   }
 
-  public static void setTokensFor(ContainerLaunchContext amContainer, List<Path> paths, Configuration conf) throws IOException {
+  public static void setTokensFor(ContainerLaunchContext amContainer, List<Path> paths, Configuration conf)
+          throws IOException {
     Credentials credentials = new Credentials();
     // for HDFS
     TokenCache.obtainTokensForNamenodes(credentials, paths.toArray(new Path[0]), conf);
@@ -339,7 +340,8 @@ public final class Utils {
    * @param flinkConfiguration The Flink config to get the environment variable
    * defintion from
    */
-  public static Map<String, String> getEnvironmentVariables(String envPrefix, org.apache.flink.configuration.Configuration flinkConfiguration) {
+  public static Map<String, String> getEnvironmentVariables(String envPrefix,
+                                        org.apache.flink.configuration.Configuration flinkConfiguration) {
     Map<String, String> result = new HashMap<>();
     for (Map.Entry<String, String> entry : flinkConfiguration.toMap().entrySet()) {
       if (entry.getKey().startsWith(envPrefix) && entry.getKey().length() > envPrefix.length()) {

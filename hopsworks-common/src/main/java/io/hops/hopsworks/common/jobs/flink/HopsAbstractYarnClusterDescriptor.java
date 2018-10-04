@@ -164,6 +164,18 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
 
   private String nodeLabel;
 
+  public void setYarnApplication(YarnClientApplication yarnApplication) {
+    this.yarnApplication = yarnApplication;
+  }
+
+  public void setAppResponse(GetNewApplicationResponse appResponse) {
+    this.appResponse = appResponse;
+  }
+
+  private YarnClientApplication yarnApplication = null;
+
+  private GetNewApplicationResponse appResponse = null;
+
   /**
    * Optional Jar file to include in the system class loader of all application
    * nodes (for per-job submission).
@@ -225,7 +237,8 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
 
   public void setLocalJarPath(Path localJarPath) {
     if (!localJarPath.toString().endsWith("jar")) {
-      throw new IllegalArgumentException("The passed jar path ('" + localJarPath + "') does not end with the 'jar' extension");
+      throw new IllegalArgumentException("The passed jar path ('" + localJarPath
+              + "') does not end with the 'jar' extension");
     }
     this.flinkJarPath = localJarPath;
   }
@@ -310,7 +323,8 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
     // The number of cores can be configured in the config.
     // If not configured, it is set to the number of task slots
     int numYarnVcores = yarnConfiguration.getInt(YarnConfiguration.NM_VCORES, YarnConfiguration.DEFAULT_NM_VCORES);
-    int configuredVcores = flinkConfiguration.getInteger(YarnConfigOptions.VCORES, clusterSpecification.getSlotsPerTaskManager());
+    int configuredVcores = flinkConfiguration.getInteger(YarnConfigOptions.VCORES,
+            clusterSpecification.getSlotsPerTaskManager());
     // don't configure more than the maximum configured number of vcores
     if (configuredVcores > numYarnVcores) {
       throw new IllegalConfigurationException(
@@ -431,7 +445,8 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
   }
 
   @Override
-  public ClusterClient<ApplicationId> deploySessionCluster(ClusterSpecification clusterSpecification) throws ClusterDeploymentException {
+  public ClusterClient<ApplicationId> deploySessionCluster(ClusterSpecification clusterSpecification)
+          throws ClusterDeploymentException {
     try {
       return deployInternal(
               clusterSpecification,
@@ -529,11 +544,15 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
 
     // ------------------ Check if the YARN ClusterClient has the requested resources --------------
     // Create application via yarnClient
-    final YarnClientApplication yarnApplication = yarnClient.createApplication();
-    final GetNewApplicationResponse appResponse = yarnApplication.getNewApplicationResponse();
+
+    if(yarnApplication == null) {
+      yarnApplication = yarnClient.createApplication();
+      appResponse = yarnApplication.getNewApplicationResponse();
+    }
+
 
     
-    // TODO (Ahmad): Split here
+
     
     Resource maxRes = appResponse.getMaximumResourceCapability();
 
@@ -545,7 +564,8 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
       throw new YarnDeploymentException("Could not retrieve information about free cluster resources.", e);
     }
 
-    final int yarnMinAllocationMB = yarnConfiguration.getInt(YarnConfiguration.RM_SCHEDULER_MINIMUM_ALLOCATION_MB, 0);
+    final int yarnMinAllocationMB = yarnConfiguration.getInt(YarnConfiguration.RM_SCHEDULER_MINIMUM_ALLOCATION_MB,
+            0);
 
     final ClusterSpecification validClusterSpecification;
     try {
@@ -618,8 +638,10 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
 
     if (jobManagerMemoryMb < yarnMinAllocationMB || taskManagerMemoryMb < yarnMinAllocationMB) {
       LOG.warn("The JobManager or TaskManager memory is below the smallest possible YARN Container size. "
-              + "The value of 'yarn.scheduler.minimum-allocation-mb' is '" + yarnMinAllocationMB + "'. Please increase the memory size."
-              + "YARN will allocate the smaller containers but the scheduler will account for the minimum-allocation-mb, maybe not all instances "
+              + "The value of 'yarn.scheduler.minimum-allocation-mb' is '" + yarnMinAllocationMB
+              + "'. Please increase the memory size."
+              + "YARN will allocate the smaller containers but the scheduler will account for " +
+              "the minimum-allocation-mb, maybe not all instances "
               + "you requested will start.");
     }
 
@@ -631,18 +653,24 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
       taskManagerMemoryMb = yarnMinAllocationMB;
     }
 
-    final String note = "Please check the 'yarn.scheduler.maximum-allocation-mb' and the 'yarn.nodemanager.resource.memory-mb' configuration values\n";
+    final String note = "Please check the 'yarn.scheduler.maximum-allocation-mb' and the " +
+            "'yarn.nodemanager.resource.memory-mb' configuration values\n";
     if (jobManagerMemoryMb > maximumResourceCapability.getMemory()) {
-      throw new YarnDeploymentException("The cluster does not have the requested resources for the JobManager available!\n"
-              + "Maximum Memory: " + maximumResourceCapability.getMemory() + "MB Requested: " + jobManagerMemoryMb + "MB. " + note);
+      throw new YarnDeploymentException("The cluster does not have the requested resources for" +
+              " the JobManager available!\n"
+              + "Maximum Memory: " + maximumResourceCapability.getMemory() + "MB Requested: " + jobManagerMemoryMb
+              + "MB. " + note);
     }
 
     if (taskManagerMemoryMb > maximumResourceCapability.getMemory()) {
-      throw new YarnDeploymentException("The cluster does not have the requested resources for the TaskManagers available!\n"
-              + "Maximum Memory: " + maximumResourceCapability.getMemory() + " Requested: " + taskManagerMemoryMb + "MB. " + note);
+      throw new YarnDeploymentException("The cluster does not have the requested resources for the TaskManagers" +
+              " available!\n"
+              + "Maximum Memory: " + maximumResourceCapability.getMemory() + " Requested: " + taskManagerMemoryMb
+              + "MB. " + note);
     }
 
-    final String noteRsc = "\nThe Flink YARN client will try to allocate the YARN session, but maybe not all TaskManagers are "
+    final String noteRsc = "\nThe Flink YARN client will try to allocate the YARN session, but maybe not " +
+            "all TaskManagers are "
             + "connecting from the beginning because the resources are currently not available in the cluster. "
             + "The allocation might take more time than usual because the Flink YARN client needs to wait until "
             + "the resources become available.";
@@ -676,7 +704,8 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
         LOG.warn("There is not enough memory available in the YARN cluster. "
                 + "The TaskManager(s) require " + taskManagerMemoryMb + "MB each. "
                 + "NodeManagers available: " + Arrays.toString(freeClusterResources.nodeManagersFree) + "\n"
-                + "After allocating the JobManager (" + jobManagerMemoryMb + "MB) and (" + i + "/" + taskManagerCount + ") TaskManagers, "
+                + "After allocating the JobManager (" + jobManagerMemoryMb + "MB) and (" + i + "/" + taskManagerCount
+                + ") TaskManagers, "
                 + "the following NodeManagers are available: " + Arrays.toString(nmFree) + noteRsc);
       }
     }
@@ -693,7 +722,8 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
   private void checkYarnQueues(YarnClient yarnClient) {
     try {
       List<QueueInfo> queues = yarnClient.getAllQueues();
-      if (queues.size() > 0 && this.yarnQueue != null) { // check only if there are queues configured in yarn and for this session.
+      if (queues.size() > 0 && this.yarnQueue != null) {  // check only if there are queues
+                                                          // configured in yarn and for this session.
         boolean queueFound = false;
         for (QueueInfo queue : queues) {
           if (queue.getQueueName().equals(this.yarnQueue)) {
@@ -747,7 +777,8 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
     if (!fs.getClass().getSimpleName().equals("GoogleHadoopFileSystem")
             && fs.getScheme().startsWith("file")) {
       LOG.warn("The file system scheme is '" + fs.getScheme() + "'. This indicates that the "
-              + "specified Hadoop configuration path is wrong and the system is using the default Hadoop configuration values."
+              + "specified Hadoop configuration path is wrong and the system is using the default" +
+              " Hadoop configuration values."
               + "The Flink YARN client needs to store its files in a distributed file system");
     }
 
@@ -1010,7 +1041,8 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
     // Setup CLASSPATH and environment variables for ApplicationMaster
     final Map<String, String> appMasterEnv = new HashMap<>();
     // set user specified app master environment variables
-    appMasterEnv.putAll(Utils.getEnvironmentVariables(ResourceManagerOptions.CONTAINERIZED_MASTER_ENV_PREFIX, configuration));
+    appMasterEnv.putAll(Utils.getEnvironmentVariables(ResourceManagerOptions.CONTAINERIZED_MASTER_ENV_PREFIX,
+            configuration));
     // set Flink app class path
     appMasterEnv.put(YarnConfigKeys.ENV_FLINK_CLASSPATH, classPathBuilder.toString());
 
@@ -1026,7 +1058,8 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
     appMasterEnv.put(YarnConfigKeys.ENV_ZOOKEEPER_NAMESPACE, getZookeeperNamespace());
     appMasterEnv.put(YarnConfigKeys.FLINK_YARN_FILES, yarnFilesDir.toUri().toString());
 
-    // https://github.com/apache/hadoop/blob/trunk/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-site/src/site/markdown/YarnApplicationSecurity.md#identity-on-an-insecure-cluster-hadoop_user_name
+    // https://github.com/apache/hadoop/blob/trunk/hadoop-yarn-project/hadoop-yarn/hadoop-yarn-site/src/site/markdown
+    // /YarnApplicationSecurity.md#identity-on-an-insecure-cluster-hadoop_user_name
     appMasterEnv.put(YarnConfigKeys.ENV_HADOOP_USER_NAME, UserGroupInformation.getCurrentUser().getUserName());
 
     if (remotePathKeytab != null) {
@@ -1096,7 +1129,8 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
           throw new YarnDeploymentException("The YARN application unexpectedly switched to state "
                   + appState + " during deployment. \n"
                   + "Diagnostics from YARN: " + report.getDiagnostics() + "\n"
-                  + "If log aggregation is enabled on your cluster, use this command to further investigate the issue:\n"
+                  + "If log aggregation is enabled on your cluster, use this" +
+                  " command to further investigate the issue:\n"
                   + "yarn logs -applicationId " + appId);
         //break ..
         case RUNNING:
@@ -1107,7 +1141,8 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
             LOG.info("Deploying cluster, current state " + appState);
           }
           if (System.currentTimeMillis() - startTime > 60000) {
-            LOG.info("Deployment took more than 60 seconds. Please check if the requested resources are available in the YARN cluster");
+            LOG.info("Deployment took more than 60 seconds. Please check if the requested" +
+                    " resources are available in the YARN cluster");
           }
 
       }
@@ -1288,7 +1323,8 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
     }
   }
 
-  private ClusterResourceDescription getCurrentFreeClusterResources(YarnClient yarnClient) throws YarnException, IOException {
+  private ClusterResourceDescription getCurrentFreeClusterResources(YarnClient yarnClient) throws YarnException,
+          IOException {
     List<NodeReport> nodes = yarnClient.getNodeReports(NodeState.RUNNING);
 
     int totalFreeMemory = 0;
@@ -1664,7 +1700,8 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
     return amContainer;
   }
 
-  private static YarnConfigOptions.UserJarInclusion getUserJarInclusionMode(org.apache.flink.configuration.Configuration config) {
+  private static YarnConfigOptions.UserJarInclusion getUserJarInclusionMode(org.apache.flink.configuration.Configuration
+                                                                                    config) {
     String configuredUserJarInclusion = config.getString(YarnConfigOptions.CLASSPATH_INCLUDE_USER_JAR);
     try {
       return YarnConfigOptions.UserJarInclusion.valueOf(configuredUserJarInclusion.toUpperCase());
