@@ -50,6 +50,7 @@ import java.io.File;
 import org.apache.hadoop.fs.Path;
 
 import java.io.IOException;
+import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -366,7 +367,21 @@ public class FlinkYarnRunnerBuilder {
     //TODO: Ahmad! Check flinkConf and yarnConf initialized correctly!
     org.apache.flink.configuration.Configuration flinkConf
             = new org.apache.flink.configuration.Configuration();
-    YarnConfiguration yarnConf = new YarnConfiguration(yarnClient.getConfig());
+    YarnConfiguration yarnConf = new YarnConfiguration(services.getSettings().getConfiguration());
+    
+    try {
+//    TODO (Ahmad): System.getenv("YARN_CONF_DIR") returns 
+//        "/srv/hops/domains/domain1/config/null" !!!
+//      yarnConf.addResource(new File(System.getenv("YARN_CONF_DIR")
+//                + "/yarn-site.xml").toURI().toURL());
+      LOGGER.log(Level.INFO, "FLINK: YARN_CONF_DIR = {0}", System.getenv("YARN_CONF_DIR"));
+      LOGGER.log(Level.INFO, "FLINK: hadoopDir = {0}", hadoopDir);
+      yarnConf.addResource(new File(hadoopDir
+                + "/etc/hadoop/yarn-site.xml").toURI().toURL());
+    } catch (MalformedURLException t) {
+      throw new RuntimeException("Error", t);
+    }
+    
     HopsYarnClusterDescriptor cluster = new HopsYarnClusterDescriptor(flinkConf,
             yarnConf, flinkConfDir, yarnClient, true);
     //TODO: Change the cluster to use files from hdfs

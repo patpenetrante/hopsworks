@@ -304,7 +304,7 @@ public class YarnRunner {
 
     } else if (jobType == JobType.FLINK) {
       logger.log(Level.INFO,
-          "FLINK: YarnRunner got a Flink Job!", appId);
+          "FLINK: YarnRunner got a Flink Job!");
       // Objects needed for materializing user certificates
       //TOCHECK: Ahmad     flinkCluster.setCertsObjects(services, project, username, javaOptions);
 
@@ -324,35 +324,13 @@ public class YarnRunner {
 //        args = amArgs.trim().split(" ");
 //      }
       args = amArgs.trim().split(" ");
+      logger.log(Level.INFO, "amArgs = ", amArgs);
 //
 
 
-      /*
-       * Copy the appjar to the localOS as it is needed by the Flink client
-       * Create path in local /tmp to store the appjar
-       * To distinguish between jars for different job executions, add the
-       * current system time in the filename. This jar is removed after
-       * the job is finished.
-       */
-      String localPathAppJarDir = "/tmp/" + appJarPath.substring(appJarPath.
-          indexOf("Projects"), appJarPath.lastIndexOf("/")) + "/" + appId;
-      String appJarName = appJarPath.substring(appJarPath.lastIndexOf("/")).
-          replace("/", "");
-      File tmpDir = new File(localPathAppJarDir);
-      if (!tmpDir.exists()) {
-        tmpDir.mkdir();
-      }
-      //Copy job jar locaclly so that Flink client has access to it 
-      //in YarnRunner
-      FileSystem fs = FileSystem.get(conf);
-      logger.log(Level.INFO, "FLINK: Copying files ", appJarPath);
-      fs.copyToLocalFile(new Path(appJarPath), new Path(localPathAppJarDir + "/"
-          + appJarName));
-      //app.jar path 
-      File file = new File(localPathAppJarDir + "/" + appJarName);
-        
-        
       
+        
+      String localPathAppJarDir = null;
       try {
         List<URL> classpaths = new ArrayList<>();
         //Copy Flink jar to local machine and pass it to the classpath
@@ -368,31 +346,66 @@ public class YarnRunner {
         classpaths.add(beamRunnerURL);
         classpaths.add(beamHarnessURL);
 
-        logger.log(Level.INFO, "FLINK: Packaging the Flink program...");
-        PackagedProgram packagedProgram = new PackagedProgram(file, classpaths, appMainClass, args);
-        JobGraph jobGraph = PackagedProgramUtils.createJobGraph(packagedProgram,
-                flinkCluster.getFlinkConfiguration(), parallelism);
-
         // create app
         YarnClientApplication yarnApplication = yarnClient.createApplication();
         GetNewApplicationResponse appResponse = yarnApplication.getNewApplicationResponse();
         flinkCluster.setYarnApplication(yarnApplication);
         flinkCluster.setAppResponse(appResponse);
-
+        
         appId = appResponse.getApplicationId();
+        logger.log(Level.INFO,
+          "FLINK: Created YarnApplication with appId = {0},", appId.toString());
+        logger.log(Level.INFO,
+          "FLINK: localResourcesBasePath = {0},", localResourcesBasePath);
+        
         //And replace all occurences of $APPID with the real id.
-        fillInAppid(appId.toString());
+        //fillInAppid(appId.toString());
+
+        
+        
+        
+        /*
+        * Copy the appjar to the localOS as it is needed by the Flink client
+        * Create path in local /tmp to store the appjar
+        * To distinguish between jars for different job executions, add the
+        * current system time in the filename. This jar is removed after
+        * the job is finished.
+        */
+        localPathAppJarDir = "/tmp/" + appJarPath.substring(appJarPath.
+            indexOf("Projects"), appJarPath.lastIndexOf("/")) + "/" + appId;
+        String appJarName = appJarPath.substring(appJarPath.lastIndexOf("/")).
+            replace("/", "");
+        File tmpDir = new File(localPathAppJarDir);
+        if (!tmpDir.exists()) {
+          tmpDir.mkdir();
+        }
+        //Copy job jar locaclly so that Flink client has access to it 
+        //in YarnRunner
+        FileSystem fs = FileSystem.get(conf);
+        Path homeDir = fs.getHomeDirectory();
+        logger.log(Level.INFO,
+          "FLINK: getHomeDirectory() = {0}", homeDir.toString());
+        flinkCluster.setHomeDir(homeDir);
+        
+        logger.log(Level.INFO, "FLINK: Copying files {0}", appJarPath);
+        fs.copyToLocalFile(new Path(appJarPath), new Path(localPathAppJarDir + "/"
+            + appJarName));
+        //app.jar path 
+        File file = new File(localPathAppJarDir + "/" + appJarName);
+
+        
+        logger.log(Level.INFO, "FLINK: Packaging the Flink program...");
+        PackagedProgram packagedProgram = new PackagedProgram(file, classpaths, appMainClass, args);
+        JobGraph jobGraph = PackagedProgramUtils.createJobGraph(packagedProgram,
+                flinkCluster.getFlinkConfiguration(), parallelism);
+
+        
+        
+        
 
 
-        // TODO (Ahmad): Didn't work!
-        //   java.io.FileNotFoundException:
-        //   hdfs:/user/spark/cacerts.jks/application_1537808450738_0015/Flinking__meb10000__kstore.jks
-        //   (No such file or directory)
-        // When Hops RPC TLS is enabled, Yarn will take care of application certificate
-        // if (!services.getSettings().getHopsRpcTls()) {
-        //   copyUserCertificates(project, jobType, dfso, username,
-        //            appId.toString());
-        //  }
+
+        
 
         Map<String, String> jobSystemProperties = new HashMap<>(3);
         // When Hops RPC TLS is enabled, Yarn will take care of application certificate
@@ -413,6 +426,7 @@ public class YarnRunner {
                 flinkCluster.deployJobCluster(flinkClusterSpecification, jobGraph, true);
         //client.run(program, parallelism);
         
+               
         appId = clusterClient.getClusterId();
         logger.log(Level.INFO, "FLINK: Finished deploying cluster with ID {0}", appId.toString());
         
@@ -436,7 +450,9 @@ public class YarnRunner {
                 + " ClusterDeploymentException : " + ex.getMessage());
       } finally {
         //Remove local flink app jar
-        FileUtils.deleteDirectory(localPathAppJarDir);
+        if(localPathAppJarDir != null) {
+          FileUtils.deleteDirectory(localPathAppJarDir);
+        }
         flinkCluster = null;
         appId = null;
         appContext = null;

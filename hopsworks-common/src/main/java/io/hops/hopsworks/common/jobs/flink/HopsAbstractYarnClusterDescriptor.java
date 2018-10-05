@@ -164,6 +164,12 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
 
   private String nodeLabel;
 
+  private Path homeDir;
+  
+  public void setHomeDir (Path homeDir) {
+    this.homeDir = homeDir;
+  }
+  
   public void setYarnApplication(YarnClientApplication yarnApplication) {
     this.yarnApplication = yarnApplication;
   }
@@ -749,7 +755,8 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
       }
     }
   }
-
+  
+  
   public ApplicationReport startAppMaster(
           Configuration configuration,
           String applicationName,
@@ -770,8 +777,12 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
     // initialize file system
     // Copy the application master jar to the filesystem
     // Create a local resource to point to the destination jar path
+    
     final FileSystem fs = FileSystem.get(yarnConfiguration);
-    final Path homeDir = fs.getHomeDirectory();
+    if(homeDir == null) {
+      // TODO (Ahmad):  Check how to set Home Dir correctly
+      homeDir = fs.getHomeDirectory();
+    }
 
     // hard coded check for the GoogleHDFS client because its not overriding the getScheme() method.
     if (!fs.getClass().getSimpleName().equals("GoogleHadoopFileSystem")
@@ -1167,8 +1178,10 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
    * @param appId YARN application id
    */
   private Path getYarnFilesDir(final ApplicationId appId) throws IOException {
-    final FileSystem fileSystem = FileSystem.get(yarnConfiguration);
-    final Path homeDir = fileSystem.getHomeDirectory();
+    if(homeDir == null) {
+      final FileSystem fileSystem = FileSystem.get(yarnConfiguration);
+      homeDir = fileSystem.getHomeDirectory();
+    }
     return new Path(homeDir, ".flink/" + appId + '/');
   }
 
