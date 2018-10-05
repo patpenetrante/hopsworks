@@ -385,7 +385,7 @@ public class YarnRunner {
         Path homeDir = fs.getHomeDirectory();
         logger.log(Level.INFO,
           "FLINK: getHomeDirectory() = {0}", homeDir.toString());
-        flinkCluster.setHomeDir(homeDir);
+        flinkCluster.setFs(fs);
         
         logger.log(Level.INFO, "FLINK: Copying files {0}", appJarPath);
         fs.copyToLocalFile(new Path(appJarPath), new Path(localPathAppJarDir + "/"
