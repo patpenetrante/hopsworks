@@ -60,6 +60,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.yarn.api.records.LocalResource;
 import org.apache.hadoop.yarn.api.records.LocalResourceType;
 import org.apache.hadoop.yarn.api.records.LocalResourceVisibility;
@@ -362,12 +363,19 @@ public class FlinkYarnRunnerBuilder {
           YarnClient yarnClient, final String certsDir,
           AsynchronousJobExecutor services) throws IOException {
 
+    String stagingPath = File.separator + "Projects" + File.separator + project
+            + File.separator
+            + Settings.PROJECT_STAGING_DIR;
+
+    Configuration conf = services.getSettings().getConfiguration();
+    conf.set("dfs.user.home.dir.prefix", stagingPath);
+
     //Create the YarnRunner builder for Flink, proceed with setting values
     YarnRunner.Builder builder = new YarnRunner.Builder(Settings.FLINK_AM_MAIN);
     //TODO: Ahmad! Check flinkConf and yarnConf initialized correctly!
     org.apache.flink.configuration.Configuration flinkConf
             = new org.apache.flink.configuration.Configuration();
-    YarnConfiguration yarnConf = new YarnConfiguration(services.getSettings().getConfiguration());
+    YarnConfiguration yarnConf = new YarnConfiguration(conf);
     
     try {
 //    TODO (Ahmad): System.getenv("YARN_CONF_DIR") returns 
@@ -413,10 +421,6 @@ public class FlinkYarnRunnerBuilder {
     builder.setJobUser(jobUser);
     builder.setFlinkCluster(cluster);
     builder.setFlinkClusterSpecification(clusterSpecification);
-    
-    String stagingPath = File.separator + "Projects" + File.separator + project
-            + File.separator
-            + Settings.PROJECT_STAGING_DIR;
     builder.localResourcesBasePath(stagingPath);
     
     //Add extra files to local resources, use filename as key
