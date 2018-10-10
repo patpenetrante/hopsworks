@@ -368,13 +368,16 @@ public class FlinkYarnRunnerBuilder {
             + Settings.PROJECT_STAGING_DIR;
 
     Configuration conf = services.getSettings().getConfiguration();
-    conf.set("dfs.user.home.dir.prefix", stagingPath);
+    // Setting home dir prefix does not work as it is hard coded
+    // ->  return makeQualified(new Path("/user/" + dfs.ugi.getShortUserName()));
+    // Don't know what effect dfs.user.home.dir.prefix has!!
+    //conf.set("dfs.user.home.dir.prefix", stagingPath);
 
     //Create the YarnRunner builder for Flink, proceed with setting values
     YarnRunner.Builder builder = new YarnRunner.Builder(Settings.FLINK_AM_MAIN);
     //TODO: Ahmad! Check flinkConf and yarnConf initialized correctly!
     org.apache.flink.configuration.Configuration flinkConf
-            = new org.apache.flink.configuration.Configuration();
+            = org.apache.flink.configuration.GlobalConfiguration.loadConfiguration(flinkConfDir);
     YarnConfiguration yarnConf = new YarnConfiguration(conf);
     
     try {
@@ -425,6 +428,7 @@ public class FlinkYarnRunnerBuilder {
     
     //Add extra files to local resources, use filename as key
     //Get filesystem
+  
     if (!extraFiles.isEmpty()) {
       if (null == dfsClient) {
         throw new YarnDeploymentException("Could not connect to filesystem");
@@ -446,6 +450,7 @@ public class FlinkYarnRunnerBuilder {
                 scFileStat.getLen(),
                 scFileStat.getModificationTime(),
                 dto.getPattern());
+        cluster.addShipFiles(shipFiles);
 //TOCHECK: Ahmad        cluster.addHopsworksResource(dto.getName(), resource);
       }
     }

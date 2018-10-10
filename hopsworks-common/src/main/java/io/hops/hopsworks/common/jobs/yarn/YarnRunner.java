@@ -381,14 +381,18 @@ public class YarnRunner {
         }
         //Copy job jar locaclly so that Flink client has access to it 
         //in YarnRunner
-        conf.setStrings("dfs.user.home.dir.prefix", localResourcesBasePath);
+        
+        // Setting home dir prefix does not work as it is hard coded
+        // ->  return makeQualified(new Path("/user/" + dfs.ugi.getShortUserName()));
+        // Don't know what effect dfs.user.home.dir.prefix has!!
+        // conf.set("dfs.user.home.dir.prefix", localResourcesBasePath);
         FileSystem fs = FileSystem.get(conf);
         Path homeDir = fs.getHomeDirectory();
         logger.log(Level.INFO,
           "FLINK: getHomeDirectory() = {0}", homeDir.toString());
-        
-        // flinkCluster.setHomeDir(homeDir);
-        flinkCluster.setFs(fs);
+                
+        flinkCluster.setStagingDir(new Path(localResourcesBasePath));
+        //flinkCluster.setFs(fs);
         
         logger.log(Level.INFO, "FLINK: Copying files {0}", appJarPath);
         fs.copyToLocalFile(new Path(appJarPath), new Path(localPathAppJarDir + "/"

@@ -166,8 +166,14 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
 
   private FileSystem hopsfs;
   
+  private Path stagingDir;
+  
   public void setFs (FileSystem fs) {
     this.hopsfs = fs;
+  }
+  
+  public void setStagingDir (Path stagingDir) {
+    this.stagingDir = stagingDir;
   }
   
   public void setYarnApplication(YarnClientApplication yarnApplication) {
@@ -778,8 +784,19 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
     // Copy the application master jar to the filesystem
     // Create a local resource to point to the destination jar path
     
-    final FileSystem fs = hopsfs;//FileSystem.get(yarnConfiguration);
-    Path homeDir = fs.getHomeDirectory();
+    final FileSystem fs;
+    if(hopsfs != null) {
+      fs = hopsfs;
+    } else {
+      fs = FileSystem.get(yarnConfiguration);
+    }
+    
+    Path homeDir;
+    if (stagingDir != null) {
+      homeDir = stagingDir;
+    } else {
+      homeDir = fs.getHomeDirectory();
+    }
 
 
     // hard coded check for the GoogleHDFS client because its not overriding the getScheme() method.
@@ -1176,8 +1193,20 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
    * @param appId YARN application id
    */
   private Path getYarnFilesDir(final ApplicationId appId) throws IOException {
-    final FileSystem fileSystem = hopsfs;//FileSystem.get(yarnConfiguration);
-    Path  homeDir = fileSystem.getHomeDirectory();
+    final FileSystem fileSystem;
+    if(hopsfs != null) {
+      fileSystem = hopsfs;
+    } else {
+      fileSystem = FileSystem.get(yarnConfiguration);
+    }
+    
+    Path  homeDir;
+    
+    if (stagingDir != null) {
+      homeDir = stagingDir;
+    } else {
+      homeDir = fileSystem.getHomeDirectory();
+    }
     return new Path(homeDir, ".flink/" + appId + '/');
   }
 
@@ -1615,7 +1644,12 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
       failSessionDuringDeployment(yarnClient, yarnApplication);
       LOG.info("Deleting files in {}.", yarnFilesDir);
       try {
-        FileSystem fs = hopsfs;//FileSystem.get(yarnConfiguration);
+        FileSystem fs;
+        if(hopsfs != null) {
+          fs = hopsfs;
+        } else {
+          fs = FileSystem.get(yarnConfiguration);
+        }
 
         if (!fs.delete(yarnFilesDir, true)) {
           throw new IOException("Deleting files in " + yarnFilesDir + " was unsuccessful");
