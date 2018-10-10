@@ -164,10 +164,10 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
 
   private String nodeLabel;
 
-  private Path homeDir;
+  private FileSystem hopsfs;
   
-  public void setHomeDir (Path homeDir) {
-    this.homeDir = homeDir;
+  public void setFs (FileSystem fs) {
+    this.hopsfs = fs;
   }
   
   public void setYarnApplication(YarnClientApplication yarnApplication) {
@@ -767,22 +767,20 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
           ClusterSpecification clusterSpecification) throws Exception {
 
     // ------------------ Initialize the file systems -------------------------
-    try {
-      org.apache.flink.core.fs.FileSystem.initialize(configuration);
-    } catch (IOException e) {
-      throw new IOException("Error while setting the default "
-              + "filesystem scheme from configuration.", e);
-    }
+//    try {
+//      org.apache.flink.core.fs.FileSystem.initialize(configuration);
+//    } catch (IOException e) {
+//      throw new IOException("Error while setting the default "
+//              + "filesystem scheme from configuration.", e);
+//    }
 
     // initialize file system
     // Copy the application master jar to the filesystem
     // Create a local resource to point to the destination jar path
     
-    final FileSystem fs = FileSystem.get(yarnConfiguration);
-    if(homeDir == null) {
-      // TODO (Ahmad):  Check how to set Home Dir correctly
-      homeDir = fs.getHomeDirectory();
-    }
+    final FileSystem fs = hopsfs;//FileSystem.get(yarnConfiguration);
+    Path homeDir = fs.getHomeDirectory();
+
 
     // hard coded check for the GoogleHDFS client because its not overriding the getScheme() method.
     if (!fs.getClass().getSimpleName().equals("GoogleHadoopFileSystem")
@@ -1178,10 +1176,8 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
    * @param appId YARN application id
    */
   private Path getYarnFilesDir(final ApplicationId appId) throws IOException {
-    if(homeDir == null) {
-      final FileSystem fileSystem = FileSystem.get(yarnConfiguration);
-      homeDir = fileSystem.getHomeDirectory();
-    }
+    final FileSystem fileSystem = hopsfs;//FileSystem.get(yarnConfiguration);
+    Path  homeDir = fileSystem.getHomeDirectory();
     return new Path(homeDir, ".flink/" + appId + '/');
   }
 
@@ -1619,7 +1615,7 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
       failSessionDuringDeployment(yarnClient, yarnApplication);
       LOG.info("Deleting files in {}.", yarnFilesDir);
       try {
-        FileSystem fs = FileSystem.get(yarnConfiguration);
+        FileSystem fs = hopsfs;//FileSystem.get(yarnConfiguration);
 
         if (!fs.delete(yarnFilesDir, true)) {
           throw new IOException("Deleting files in " + yarnFilesDir + " was unsuccessful");
