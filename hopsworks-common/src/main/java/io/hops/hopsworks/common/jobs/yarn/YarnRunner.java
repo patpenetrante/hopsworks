@@ -419,6 +419,7 @@ public class YarnRunner {
         // Certificates are materialized locally so DFSClient can be set to null
         // LocalResources are not used by Flink, so set it null
         if (!services.getSettings().getHopsRpcTls()) {
+          logger.log(Level.INFO, "FLINK: HopsUtils is copying project user certs...");
           HopsUtils.copyProjectUserCerts(project, username,
                   services.getSettings().getHopsworksTmpCertDir(),
                   services.getSettings().getHdfsTmpCertDir(), JobType.FLINK,

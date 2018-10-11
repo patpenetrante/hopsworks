@@ -58,14 +58,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.yarn.api.records.LocalResource;
-import org.apache.hadoop.yarn.api.records.LocalResourceType;
-import org.apache.hadoop.yarn.api.records.LocalResourceVisibility;
 import org.apache.hadoop.yarn.client.api.YarnClient;
-import org.apache.hadoop.yarn.util.ConverterUtils;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.flink.client.deployment.ClusterSpecification;
 
@@ -433,27 +427,38 @@ public class FlinkYarnRunnerBuilder {
       if (null == dfsClient) {
         throw new YarnDeploymentException("Could not connect to filesystem");
       }
-      FileSystem fs = dfsClient.getFilesystem();
+//      FileSystem fs = dfsClient.getFilesystem();
+      List<File> shipFiles = new ArrayList<>();
+      
       for (LocalResourceDTO dto : extraFiles) {
         String pathToResource = dto.getPath();
         pathToResource = pathToResource.replaceFirst("hdfs:/*Projects",
                 "hdfs:///Projects");
         pathToResource = pathToResource.replaceFirst("hdfs:/*user",
                 "hdfs:///user");
-        Path src = new Path(pathToResource);
-        FileStatus scFileStat = fs.getFileStatus(src);
-        LocalResource resource = LocalResource.newInstance(ConverterUtils.
-                getYarnUrlFromPath(src),
-                LocalResourceType.valueOf(dto.getType().toUpperCase()),
-                LocalResourceVisibility.valueOf(dto.getVisibility().
-                        toUpperCase()),
-                scFileStat.getLen(),
-                scFileStat.getModificationTime(),
-                dto.getPattern());
-        cluster.addShipFiles(shipFiles);
+//        Path src = new Path(pathToResource);
+//        FileStatus scFileStat = fs.getFileStatus(src);
+//        LocalResource resource = LocalResource.newInstance(ConverterUtils.
+//                getYarnUrlFromPath(src),
+//                LocalResourceType.valueOf(dto.getType().toUpperCase()),
+//                LocalResourceVisibility.valueOf(dto.getVisibility().
+//                        toUpperCase()),
+//                scFileStat.getLen(),
+//                scFileStat.getModificationTime(),
+//                dto.getPattern());
+        shipFiles.add(new File(pathToResource));
+        LOGGER.log(Level.INFO, "FLINK: Shipping file {0}", pathToResource);
 //TOCHECK: Ahmad        cluster.addHopsworksResource(dto.getName(), resource);
       }
+      cluster.addShipFiles(shipFiles);
+        
+      LOGGER.log(Level.INFO, "FLINK: Done adding all ship files!");
     }
+    List<File> flinkLib = Arrays.asList(new File(flinkDir+"/lib/").listFiles());
+    StringBuilder b = new StringBuilder(); // only for logging
+    flinkLib.forEach(b::append);
+    LOGGER.log(Level.INFO, "FLINK: Adding Flink lib to ship! {0}", b);
+    cluster.addLibFolderToShipFiles(flinkLib);
     addSystemProperty(Settings.HOPSWORKS_REST_ENDPOINT_PROPERTY, serviceProps.getRestEndpoint());
     if (serviceProps.getKafka() != null) {
       
