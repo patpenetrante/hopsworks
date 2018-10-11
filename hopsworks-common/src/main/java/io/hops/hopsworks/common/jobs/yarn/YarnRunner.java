@@ -58,6 +58,7 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -337,14 +338,28 @@ public class YarnRunner {
         URL flinkURL = new File(serviceDir + "/"
             + Settings.FLINK_LOCRSC_FLINK_JAR).toURI().toURL();
         // TODO (Ahmad): Hard coded jars for testing!!! Fix this!
-        URL beamRunnerURL = new File(serviceDir + "/lib/beam-runners-flink_2.11-2.6.0.jar").toURI().toURL();        
-        URL beamHarnessURL = new File(serviceDir + "/lib/beam-sdks-java-harness-2.6.0.jar").toURI().toURL();
-        URL beamHdfsURL = new File(serviceDir + "/lib/beam-sdks-java-io-hadoop-file-system-2.6.0.jar").toURI().toURL();
-
+        URL beamRunnerURL = new File(serviceDir + "/lib/beam-runners-flink_2.11-2.7.0.jar").toURI().toURL();
+        URL beamHarnessURL = new File(serviceDir + "/lib/beam-sdks-java-harness-2.7.0.jar").toURI().toURL();
+        URL beamHdfsURL = new File(serviceDir + "/lib/beam-sdks-java-io-hadoop-file-system-2.7.0.jar").toURI().toURL();
+        URL hdfsURL = new File("/srv/hops/hadoop/share/hadoop/hdfs/hadoop-hdfs-2.8.2.5-SNAPSHOT.jar").toURI().toURL();
+        URL hadoopURL
+                = new File("/srv/hops/hadoop/share/hadoop/common/hadoop-common-2.8.2.5-SNAPSHOT.jar").toURI().toURL();
         classpaths.add(beamHdfsURL);
         classpaths.add(flinkURL);
         classpaths.add(beamRunnerURL);
         classpaths.add(beamHarnessURL);
+        classpaths.add(hdfsURL);
+        classpaths.add(hadoopURL);
+
+        ClassLoader cl = ClassLoader.getSystemClassLoader();
+
+        URL[] urls = ((URLClassLoader)cl).getURLs();
+        for(URL url: urls){
+          classpaths.add(url);
+          logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", url);
+
+        }
+
 
         // create app
         YarnClientApplication yarnApplication = yarnClient.createApplication();
@@ -444,7 +459,7 @@ public class YarnRunner {
  
         
       } catch (ProgramInvocationException ex) {
-        logger.log(Level.WARNING, "FLINK: Error ProgramInvocationException while submitting Flink job to cluster ",
+        logger.log(Level.INFO, "FLINK: Error ProgramInvocationException while submitting Flink job to cluster ",
             ex);
         //Kill the flink job here
         Runtime rt = Runtime.getRuntime();
@@ -453,7 +468,7 @@ public class YarnRunner {
                 + " ProgramInvocationException : " + ex.getMessage());
       } catch (ClusterDeploymentException ex) {
           // TODO: Ahmad handle this exception
-        logger.log(Level.WARNING, "FLINK: Error ClusterDeploymentException while submitting Flink job to cluster ", ex);
+        logger.log(Level.INFO, "FLINK: Error ClusterDeploymentException while submitting Flink job to cluster ", ex);
         throw new IOException("FLINK: Error while submitting Flink job to cluster,"
                 + " ClusterDeploymentException : " + ex.getMessage());
       } finally {

@@ -454,11 +454,14 @@ public class FlinkYarnRunnerBuilder {
         
       LOGGER.log(Level.INFO, "FLINK: Done adding all ship files!");
     }
+
     List<File> flinkLib = Arrays.asList(new File(flinkDir+"/lib/").listFiles());
     StringBuilder b = new StringBuilder(); // only for logging
     flinkLib.forEach(b::append);
     LOGGER.log(Level.INFO, "FLINK: Adding Flink lib to ship! {0}", b);
-    cluster.addLibFolderToShipFiles(flinkLib);
+
+    cluster.addShipFiles(flinkLib);
+    //cluster.addLibFolderToShipFiles(flinkLib);
     addSystemProperty(Settings.HOPSWORKS_REST_ENDPOINT_PROPERTY, serviceProps.getRestEndpoint());
     if (serviceProps.getKafka() != null) {
       
