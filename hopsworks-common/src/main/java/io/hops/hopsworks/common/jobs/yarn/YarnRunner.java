@@ -58,7 +58,6 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
-import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -325,7 +324,7 @@ public class YarnRunner {
 //        args = amArgs.trim().split(" ");
 //      }
       args = amArgs.trim().split(" ");
-      logger.log(Level.INFO, "amArgs = ", amArgs);
+      logger.log(Level.INFO, "FLINK: amArgs = ", amArgs);
 //
 
 
@@ -334,31 +333,114 @@ public class YarnRunner {
       String localPathAppJarDir = null;
       try {
         List<URL> classpaths = new ArrayList<>();
+        
+        URL otherURL = new File("/srv/hops/hadoop").toURI().toURL();
+        classpaths.add(otherURL); 
+        otherURL = new File("/srv/hops/hadoop/lib").toURI().toURL();
+        classpaths.add(otherURL); 
+        otherURL = new File("/srv/hops/hadoop/lib/native").toURI().toURL();
+        classpaths.add(otherURL); 
+        otherURL = new File("/srv/hops/hadoop/etc/hadoop").toURI().toURL();
+        classpaths.add(otherURL); 
+
+        
+                // Hadoop
+        URL hadoopURL
+                = new File("/srv/hops/hadoop/share/hadoop/common/hadoop-common-2.8.2.5-SNAPSHOT.jar").toURI().toURL();
+        classpaths.add(hadoopURL);
+        File[] hadoopLibs = new File("/srv/hops/hadoop/share/hadoop/common/lib").listFiles();
+
+        for(File f: hadoopLibs){
+          URL u = f.toURI().toURL();
+          classpaths.add(u);
+          logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
+
+        }
+        
+        File[] otherLibs = new File("/srv/hops/hadoop/share/hadoop/yarn/").listFiles();
+
+        for(File f: otherLibs){
+          URL u = f.toURI().toURL();
+          classpaths.add(u);
+          logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
+
+        }
+        
+        otherLibs = new File("/srv/hops/hadoop/share/hadoop/yarn/lib").listFiles();
+
+        for(File f: otherLibs){
+          URL u = f.toURI().toURL();
+          classpaths.add(u);
+          logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
+
+        }
+        
+        otherLibs = new File("/srv/hops/hadoop/share/hadoop/tools/lib").listFiles();
+
+        for(File f: otherLibs){
+          URL u = f.toURI().toURL();
+          classpaths.add(u);
+          logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
+
+        }
+        otherLibs = new File("/srv/hops/hadoop/share/hadoop/mapreduce").listFiles();
+
+        for(File f: otherLibs){
+          URL u = f.toURI().toURL();
+          classpaths.add(u);
+          logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
+
+        }
+        otherLibs = new File("/srv/hops/hadoop/share/hadoop/mapreduce/lib").listFiles();
+
+        for(File f: otherLibs){
+          URL u = f.toURI().toURL();
+          classpaths.add(u);
+          logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
+
+        }
+
+        //HDFS
+        URL hdfsURL = new File("/srv/hops/hadoop/share/hadoop/hdfs/hadoop-hdfs-2.8.2.5-SNAPSHOT.jar").toURI().toURL();
+        classpaths.add(hdfsURL);
+        
+        File[] hdfsLibs = new File("/srv/hops/hadoop/share/hadoop/hdfs/lib").listFiles();
+
+        for(File f: hdfsLibs){
+          URL u = f.toURI().toURL();
+          classpaths.add(u);
+          logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
+
+        }
+                
         //Copy Flink jar to local machine and pass it to the classpath
         URL flinkURL = new File(serviceDir + "/"
             + Settings.FLINK_LOCRSC_FLINK_JAR).toURI().toURL();
-        // TODO (Ahmad): Hard coded jars for testing!!! Fix this!
-        URL beamRunnerURL = new File(serviceDir + "/lib/beam-runners-flink_2.11-2.7.0.jar").toURI().toURL();
-        URL beamHarnessURL = new File(serviceDir + "/lib/beam-sdks-java-harness-2.7.0.jar").toURI().toURL();
-        URL beamHdfsURL = new File(serviceDir + "/lib/beam-sdks-java-io-hadoop-file-system-2.7.0.jar").toURI().toURL();
-        URL hdfsURL = new File("/srv/hops/hadoop/share/hadoop/hdfs/hadoop-hdfs-2.8.2.5-SNAPSHOT.jar").toURI().toURL();
-        URL hadoopURL
-                = new File("/srv/hops/hadoop/share/hadoop/common/hadoop-common-2.8.2.5-SNAPSHOT.jar").toURI().toURL();
-        classpaths.add(beamHdfsURL);
         classpaths.add(flinkURL);
-        classpaths.add(beamRunnerURL);
-        classpaths.add(beamHarnessURL);
-        classpaths.add(hdfsURL);
-        classpaths.add(hadoopURL);
+        
+        // TODO (Ahmad): Hard coded jars for testing!!! Fix this!
+        //URL beamRunnerURL = new File(serviceDir + "/lib/beam-runners-flink_2.11-2.7.0.jar").toURI().toURL();
+        //URL beamHarnessURL = new File(serviceDir + "/lib/beam-sdks-java-harness-2.7.0.jar").toURI().toURL();
+        //URL beamHdfsURL = 
+        //       new File(serviceDir + "/lib/beam-sdks-java-io-hadoop-file-system-2.7.0.jar").toURI().toURL();
+        //classpaths.add(beamHdfsURL);
+        //classpaths.add(beamRunnerURL);
+        //classpaths.add(beamHarnessURL);
+        
+        
+        //Beam and Flink
+        File[] flinkLibs = new File(serviceDir + "/lib").listFiles();
 
-        ClassLoader cl = ClassLoader.getSystemClassLoader();
-
-        URL[] urls = ((URLClassLoader)cl).getURLs();
-        for(URL url: urls){
-          classpaths.add(url);
-          logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", url);
+        for(File f: flinkLibs){
+          URL u = f.toURI().toURL();
+          classpaths.add(u);
+          logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
 
         }
+
+
+       
+
 
 
         // create app
@@ -417,7 +499,8 @@ public class YarnRunner {
 
         
         logger.log(Level.INFO, "FLINK: Packaging the Flink program...");
-        PackagedProgram packagedProgram = new PackagedProgram(file, classpaths, appMainClass, args);
+        //PackagedProgram packagedProgram = new PackagedProgram(file, classpaths, appMainClass, args);
+        PackagedProgram packagedProgram = new PackagedProgram(file, args);
         JobGraph jobGraph = PackagedProgramUtils.createJobGraph(packagedProgram,
                 flinkCluster.getFlinkConfiguration(), parallelism);
 
