@@ -499,8 +499,7 @@ public class YarnRunner {
 
         
         logger.log(Level.INFO, "FLINK: Packaging the Flink program...");
-        //PackagedProgram packagedProgram = new PackagedProgram(file, classpaths, appMainClass, args);
-        PackagedProgram packagedProgram = new PackagedProgram(file, args);
+        PackagedProgram packagedProgram = new PackagedProgram(file, classpaths, appMainClass, args);
         JobGraph jobGraph = PackagedProgramUtils.createJobGraph(packagedProgram,
                 flinkCluster.getFlinkConfiguration(), parallelism);
 
