@@ -450,7 +450,7 @@ public class FlinkYarnRunnerBuilder {
         LOGGER.log(Level.INFO, "FLINK: Shipping file {0}", pathToResource);
 //TOCHECK: Ahmad        cluster.addHopsworksResource(dto.getName(), resource);
       }
-      cluster.addShipFiles(shipFiles);
+      builder.addFlinkShipFiles(shipFiles);
         
       LOGGER.log(Level.INFO, "FLINK: Done adding all ship files!");
     }
