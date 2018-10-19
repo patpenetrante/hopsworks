@@ -345,6 +345,8 @@ public class FlinkYarnRunnerBuilder {
    * @param flinkDir
    * @param flinkConfDir
    * @param flinkConfFile
+   * @param dfsClient
+   * @param yarnClient
    * @param certsDir
    * @param services
    * @return
@@ -362,25 +364,17 @@ public class FlinkYarnRunnerBuilder {
             + Settings.PROJECT_STAGING_DIR;
 
     Configuration conf = services.getSettings().getConfiguration();
-    // Setting home dir prefix does not work as it is hard coded
-    // ->  return makeQualified(new Path("/user/" + dfs.ugi.getShortUserName()));
-    // Don't know what effect dfs.user.home.dir.prefix has!!
-    //conf.set("dfs.user.home.dir.prefix", stagingPath);
+    
 
     //Create the YarnRunner builder for Flink, proceed with setting values
     YarnRunner.Builder builder = new YarnRunner.Builder(Settings.FLINK_AM_MAIN);
+    
     //TODO: Ahmad! Check flinkConf and yarnConf initialized correctly!
     org.apache.flink.configuration.Configuration flinkConf
             = org.apache.flink.configuration.GlobalConfiguration.loadConfiguration(flinkConfDir);
     YarnConfiguration yarnConf = new YarnConfiguration(conf);
     
     try {
-//    TODO (Ahmad): System.getenv("YARN_CONF_DIR") returns 
-//        "/srv/hops/domains/domain1/config/null" !!!
-//      yarnConf.addResource(new File(System.getenv("YARN_CONF_DIR")
-//                + "/yarn-site.xml").toURI().toURL());
-      LOGGER.log(Level.INFO, "FLINK: YARN_CONF_DIR = {0}", System.getenv("YARN_CONF_DIR"));
-      LOGGER.log(Level.INFO, "FLINK: hadoopDir = {0}", hadoopDir);
       yarnConf.addResource(new File(hadoopDir
                 + "/etc/hadoop/yarn-site.xml").toURI().toURL());
     } catch (MalformedURLException t) {
@@ -389,18 +383,7 @@ public class FlinkYarnRunnerBuilder {
     
     HopsYarnClusterDescriptor cluster = new HopsYarnClusterDescriptor(flinkConf,
             yarnConf, flinkConfDir, yarnClient, true);
-    //TODO: Change the cluster to use files from hdfs
-    //cluster.setConfigurationDirectory(flinkConfDir);
-    //cluster.setConfigurationFilePath(new Path(flinkConfFile));
-    //cluster.setDetachedMode(detached);
-
-
-    //cluster.setFlinkConfiguration(flinkConf);
-    //cluster.setJobManagerMemory(jobManagerMemoryMb);
-    //cluster.setTaskManagerCount(taskManagerCount);
-    //cluster.setTaskManagerMemory(taskManagerMemoryMb);
-    //cluster.setTaskManagerSlots(taskManagerSlots);
-    
+   
     
     ClusterSpecification clusterSpecification = new ClusterSpecification.ClusterSpecificationBuilder()
                  .setMasterMemoryMB(jobManagerMemoryMb)
@@ -428,7 +411,7 @@ public class FlinkYarnRunnerBuilder {
         throw new YarnDeploymentException("Could not connect to filesystem");
       }
 //      FileSystem fs = dfsClient.getFilesystem();
-      List<File> shipFiles = new ArrayList<>();
+      List<Path> shipFiles = new ArrayList<>();
       
       for (LocalResourceDTO dto : extraFiles) {
         String pathToResource = dto.getPath();
@@ -446,9 +429,9 @@ public class FlinkYarnRunnerBuilder {
 //                scFileStat.getLen(),
 //                scFileStat.getModificationTime(),
 //                dto.getPattern());
-        shipFiles.add(new File(pathToResource));
+        shipFiles.add(new Path(pathToResource));
         LOGGER.log(Level.INFO, "FLINK: Shipping file {0}", pathToResource);
-//TOCHECK: Ahmad        cluster.addHopsworksResource(dto.getName(), resource);
+//        cluster.addHopsworksResource(dto.getName(), resource);
       }
       builder.addFlinkShipFiles(shipFiles);
         
@@ -456,6 +439,7 @@ public class FlinkYarnRunnerBuilder {
     }
 
     List<File> flinkLib = Arrays.asList(new File(flinkDir+"/lib/").listFiles());
+    
     StringBuilder b = new StringBuilder(); // only for logging
     flinkLib.forEach(b::append);
     LOGGER.log(Level.INFO, "FLINK: Adding Flink lib to ship! {0}", b);
@@ -499,6 +483,7 @@ public class FlinkYarnRunnerBuilder {
     builder.setAppJarPath(appJarPath);
     builder.setAppMainClass(appMainClass);
     builder.setParallelism(parallelism);
+    builder.setDetached(detached);
 
     String name;
     if (customName == null) {

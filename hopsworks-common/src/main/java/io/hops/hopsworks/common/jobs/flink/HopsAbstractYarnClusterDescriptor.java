@@ -527,14 +527,12 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
 
     // ------------------ Check if configuration is valid --------------------
     validateClusterSpecification(clusterSpecification);
-    LOG.info("FLINK: deployInternal 1");
 
     if (UserGroupInformation.isSecurityEnabled()) {
       // note: UGI::hasKerberosCredentials inaccurately reports false
       // for logins based on a keytab (fixed in Hadoop 2.6.1, see HADOOP-10786),
       // so we check only in ticket cache scenario.
       boolean useTicketCache = flinkConfiguration.getBoolean(SecurityOptions.KERBEROS_LOGIN_USETICKETCACHE);
-      LOG.info("FLINK: deployInternal 2");
 
       UserGroupInformation loginUser = UserGroupInformation.getCurrentUser();
       if (loginUser.getAuthenticationMethod() == UserGroupInformation.AuthenticationMethod.KERBEROS
@@ -546,7 +544,6 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
     }
 
     isReadyForDeployment(clusterSpecification);
-    LOG.info("FLINK: deployInternal 3");
 
     // ------------------ Check if the specified queue exists --------------------
     checkYarnQueues(yarnClient);
@@ -556,7 +553,6 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
     for (Map.Entry<String, String> dynProperty : dynProperties.entrySet()) {
       flinkConfiguration.setString(dynProperty.getKey(), dynProperty.getValue());
     }
-    LOG.info("FLINK: deployInternal 4");
 
     // ------------------ Check if the YARN ClusterClient has the requested resources --------------
     // Create application via yarnClient
@@ -571,7 +567,6 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
 
     
     Resource maxRes = appResponse.getMaximumResourceCapability();
-    LOG.info("FLINK: deployInternal 5");
 
     final ClusterResourceDescription freeClusterMem;
     try {
@@ -580,7 +575,6 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
       failSessionDuringDeployment(yarnClient, yarnApplication);
       throw new YarnDeploymentException("Could not retrieve information about free cluster resources.", e);
     }
-    LOG.info("FLINK: deployInternal 6");
 
     final int yarnMinAllocationMB = yarnConfiguration.getInt(YarnConfiguration.RM_SCHEDULER_MINIMUM_ALLOCATION_MB,
             0);
@@ -597,7 +591,7 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
       throw yde;
     }
 
-    LOG.info("FLINK: Cluster specification: {}", validClusterSpecification);
+    LOG.info("Cluster specification: {}", validClusterSpecification);
 
     final ClusterEntrypoint.ExecutionMode executionMode = detached
             ? ClusterEntrypoint.ExecutionMode.DETACHED
@@ -616,8 +610,6 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
 
     String host = report.getHost();
     int port = report.getRpcPort();
-    
-    LOG.info("FLINK: deployInternal 7");
 
     // Correctly initialize the Flink config
     flinkConfiguration.setString(JobManagerOptions.ADDRESS, host);
@@ -625,7 +617,6 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
 
     flinkConfiguration.setString(RestOptions.ADDRESS, host);
     flinkConfiguration.setInteger(RestOptions.PORT, port);
-    LOG.info("FLINK: deployInternal 8 END!");
 
     // the Flink cluster is deployed in YARN. Represent cluster
     return createYarnClusterClient(
