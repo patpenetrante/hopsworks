@@ -89,7 +89,11 @@ angular.module('hopsWorksApp')
                         self.refreshSlider();
                         self.copy();
                       }, function (error) {
-                growl.error(error.data.errorMsg, {title: 'Error fetching job configuration.', ttl: 15000});
+                      if (typeof error.data.usrMsg !== 'undefined') {
+                          growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                      } else {
+                          growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                      }
               });
             };
 
@@ -126,24 +130,15 @@ angular.module('hopsWorksApp')
                 case "SPARK":
                   jobType = 1;
                   break;
-                case "ADAM":
+                case "PYSPARK":
                   jobType = 2;
                   break;
                 case "FLINK":
                   jobType = 3;
                   break;
-                case "PYSPARK":
-                  jobType = 4;
-                  break;
-                case "TFSPARK":
-                  jobType = 5;
-                  break;
-                case "TENSORFLOW":
-                  jobType = 6;
-                  break;
               }
-              var mainFileTxt, mainFileVal, jobDetailsTxt, sparkState, adamState, flinkState, tensorflowState;
-              if (jobType === 1 || jobType === 4 || jobType === 5 ) {
+              var mainFileTxt, mainFileVal, jobDetailsTxt, sparkState, flinkState, pysparkState;
+              if (jobType === 1 || jobType === 2 ) {
 
                 sparkState = {
                   "selectedJar": getFileName(self.currentjob.runConfig.appPath)
@@ -151,28 +146,12 @@ angular.module('hopsWorksApp')
                 mainFileTxt = "App file";
                 mainFileVal = sparkState.selectedJar;
                 jobDetailsTxt = "Job details";
-              } else if (jobType === 2) {
-                adamState = {
-                  "processparameter": null,
-                  "commandList": null,
-                  "selectedCommand": self.currentjob.runConfig.selectedCommand.command
-                };
-                mainFileTxt = "ADAM command";
-                mainFileVal = adamState.selectedCommand;
-                jobDetailsTxt = "Job arguments";
               } else if (jobType === 3) {
                 flinkState = {
                   "selectedJar": getFileName(self.currentjob.runConfig.appPath)
                 };
                 mainFileTxt = "JAR file";
                 mainFileVal = flinkState.selectedJar;
-                jobDetailsTxt = "Job details";
-              } else if (jobType === 6) {
-                tensorflowState = {
-                  "selectedJar": getFileName(self.currentjob.runConfig.appPath)
-                };
-                mainFileTxt = "Python file";
-                mainFileVal = tensorflowState.selectedJar;
                 jobDetailsTxt = "Job details";
               }
               var state = {
@@ -182,9 +161,7 @@ angular.module('hopsWorksApp')
                 "phase": 4,
                 "runConfig": self.currentjob.runConfig,
                 "sparkState": sparkState,
-                "adamState": adamState,
                 "flinkState": flinkState,
-                "tensorflowState": tensorflowState,
                 "accordion1": {//Contains the job name
                   "isOpen": false,
                   "visible": true,
@@ -209,12 +186,7 @@ angular.module('hopsWorksApp')
                   "isOpen": false,
                   "visible": true,
                   "value": "",
-                  "title": "Configure and create"}/*,
-                "accordion6" : {//Contains the pre-configuration and proposals for auto-configuration
-                   "isOpen": false,
-                   "visible": true,
-                   "value": "",
-                   "title": "Pre-Configuration"}*/
+                  "title": "Configure and create"}
               };
               StorageService.store(self.projectId + "_newjob", state);
               $location.path('project/' + self.projectId + '/newjob');
@@ -230,7 +202,11 @@ angular.module('hopsWorksApp')
                           job.showing = false;
                         });
                       }, function (error) {
-                growl.error(error.data.errorMsg, {title: 'Error', ttl: 15000});
+                      if (typeof error.data.usrMsg !== 'undefined') {
+                          growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                      } else {
+                          growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                      }
               });
             };
 
@@ -265,7 +241,11 @@ angular.module('hopsWorksApp')
                           }
                         });
                       }, function (error) {
-                growl.error(error.data.errorMsg, {title: 'Error', ttl: 15000});
+                      if (typeof error.data.usrMsg !== 'undefined') {
+                          growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                      } else {
+                          growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                      }
               });
             };
 
@@ -323,14 +303,22 @@ angular.module('hopsWorksApp')
 //                                            self.stopbuttonClickedToggle(job.id, false);
                                                       self.getRunStatus();
                                                     }, function (error) {
-                                              growl.error(error.data.errorMsg, {title: 'Failed to run job', ttl: 10000});
+                                                    if (typeof error.data.usrMsg !== 'undefined') {
+                                                        growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                                                    } else {
+                                                        growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                                                    }
                                             });
 
                                           }
                                   );
 
                                 }, function (error) {
-                          growl.error(error.data.errorMsg, {title: 'Could not get the current YARN price.', ttl: 10000});
+                                if (typeof error.data.usrMsg !== 'undefined') {
+                                    growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                                } else {
+                                    growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                                }
                         });
                       });
             };
@@ -341,8 +329,11 @@ angular.module('hopsWorksApp')
                       function (success) {
                         self.getRunStatus();
                       }, function (error) {
-                growl.error(error.data.errorMsg, {title: 'Failed to stop' +
-                          ' job', ttl: 15000});
+                      if (typeof error.data.usrMsg !== 'undefined') {
+                          growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                      } else {
+                          growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                      }
               });
             };
 
@@ -383,7 +374,11 @@ angular.module('hopsWorksApp')
                   downloadLink.attr('download', success.data.appName + '_config.json');
                   downloadLink[0].click();
                 }, function (error) {
-                  growl.error(error.data.errorMsg, {title: 'Failed to export job', ttl: 5000});
+                      if (typeof error.data.usrMsg !== 'undefined') {
+                          growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                      } else {
+                          growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                      }
                 });
             };
 
@@ -401,7 +396,11 @@ angular.module('hopsWorksApp')
                     self.fetchingLogs = 0;
                   }, function (error) {
                     self.fetchingLogs = 0;
-                    growl.error(error.data.errorMsg, {title: 'Failed to show logs', ttl: 15000});
+                      if (typeof error.data.usrMsg !== 'undefined') {
+                          growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                      } else {
+                          growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                      }
               });
             };
 
@@ -428,8 +427,12 @@ angular.module('hopsWorksApp')
                       }
                       self.loadingLog = 0;
                     }, function (error) {
-                      self.loadingLog = 0;
-                      growl.error(error.data.errorMsg, {title: 'Failed to get logs', ttl: 5000});
+                        self.loadingLog = 0;
+                        if (typeof error.data.usrMsg !== 'undefined') {
+                            growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                        } else {
+                            growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                        }
                 });
             } else if(job.jobId !== "") {
               //getLogByJobIdAndSubmissionTime
@@ -451,7 +454,11 @@ angular.module('hopsWorksApp')
                       self.loadingLog = 0;
                     }, function (error) {
                       self.loadingLog = 0;
-                      growl.error(error.data.errorMsg, {title: 'Failed to get logs', ttl: 5000});
+                        if (typeof error.data.usrMsg !== 'undefined') {
+                            growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                        } else {
+                            growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                        }
                 });
             }
 
@@ -466,7 +473,11 @@ angular.module('hopsWorksApp')
                         growl.success(success.data.successMessage, {title: 'Success', ttl: 5000});
                         self.showLogs(self.currentjob.id);
                       }, function (error) {
-                        growl.error(error.data.errorMsg, {title: 'Failed to get logs', ttl: 5000});
+                      if (typeof error.data.usrMsg !== 'undefined') {
+                          growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                      } else {
+                          growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                      }
               });
             };
 
@@ -482,7 +493,11 @@ angular.module('hopsWorksApp')
                                   StorageService.remove(self.projectId + "_jobui_" + jobName);
                                   growl.success(success.data.successMessage, {title: 'Success', ttl: 5000});
                                 }, function (error) {
-                          growl.error(error.data.errorMsg, {title: 'Failed to delete job', ttl: 15000});
+                                if (typeof error.data.usrMsg !== 'undefined') {
+                                    growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                                } else {
+                                    growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                                }
                         });
                       }, function (cancelled) {
                         growl.info("Delete aborted", {title: 'Info', ttl: 5000});

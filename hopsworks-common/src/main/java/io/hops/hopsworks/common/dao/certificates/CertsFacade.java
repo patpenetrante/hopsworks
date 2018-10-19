@@ -81,7 +81,7 @@ public class CertsFacade {
     try {
       UserCerts res = query.getSingleResult();
       return res;
-    } catch (EntityNotFoundException e) {
+    } catch (NoResultException e) {
       Logger.getLogger(CertsFacade.class.getName()).log(Level.SEVERE, null,
           e);
     }
@@ -154,13 +154,9 @@ public class CertsFacade {
 
     try {
       return query.getSingleResult();
-    } catch (EntityNotFoundException e) {
-      Logger.getLogger(CertsFacade.class.getName()).log(Level.SEVERE, null,
-          e);
     } catch ( NoResultException e ) {
-      // Safe to ignore
+      return null;
     }
-    return null;
   }
 
   public List<ProjectGenericUserCerts> findAllProjectGenericUserCerts() {
@@ -177,7 +173,7 @@ public class CertsFacade {
     return new ArrayList<>();
   }
   
-  public void putUserCerts(String projectname, String username, String userKeyPwd)
+  public UserCerts putUserCerts(String projectname, String username, String userKeyPwd)
       throws IOException {
     File kFile = new File("/tmp/" + projectname + "__"
         + username + "__kstore.jks");
@@ -198,6 +194,8 @@ public class CertsFacade {
   
     FileUtils.deleteQuietly(kFile);
     FileUtils.deleteQuietly(tFile);
+
+    return uc;
   }
 
   public void putProjectGenericUserCerts(String projectGenericUsername,

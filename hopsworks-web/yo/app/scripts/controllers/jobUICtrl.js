@@ -43,9 +43,9 @@
  */
 angular.module('hopsWorksApp')
         .controller('JobUICtrl', ['$scope', '$timeout', 'growl', 'JobService', '$interval', 'StorageService',
-          '$routeParams', '$route', 'VizopsService', '$sce', '$window', 
+          '$routeParams', '$route', '$sce', '$window',
           function ($scope, $timeout, growl, JobService, $interval, StorageService,
-                  $routeParams, $route, VizopsService, $sce, $window) {
+                  $routeParams, $route, $sce, $window) {
 
             var self = this;
             self.job;
@@ -63,6 +63,7 @@ angular.module('hopsWorksApp')
             self.loading = false;
             self.loadingText = "";
             self.sessions = [];
+            self.tbUrls = [];
             self.session;
             self.tfExecutorId;
 
@@ -81,7 +82,12 @@ angular.module('hopsWorksApp')
                           self.appId = success.data
                           callback();
                         }, function (error) {
-                  growl.error(error.data.errorMsg, {title: 'Error fetching ui.', ttl: 15000});
+
+                        if (typeof error.data.usrMsg !== 'undefined') {
+                            growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                        } else {
+                            growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                        }
                   stopLoading();
                 });
               } else {
@@ -94,7 +100,12 @@ angular.module('hopsWorksApp')
                         function (success) {
                           self.appIds = success.data;
                         }, function (error) {
-                  growl.error(error.data.errorMsg, {title: 'Error fetching ui.', ttl: 15000});
+
+                        if (typeof error.data.usrMsg !== 'undefined') {
+                            growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                        } else {
+                            growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                        }
                   stopLoading();
                 });
               }
@@ -146,7 +157,12 @@ angular.module('hopsWorksApp')
 //                          var iframe = document.getElementById('ui_iframe');
 //                        }
                       }, function (error) {
-                growl.error(error.data.errorMsg, {title: 'Error fetching ui.', ttl: 15000});
+
+                      if (typeof error.data.usrMsg !== 'undefined') {
+                          growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                      } else {
+                          growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                      }
                 stopLoading();
 
               });
@@ -188,7 +204,12 @@ angular.module('hopsWorksApp')
                         // This timeout is ignored when the iframe is loaded, replacing the overlay
                         $timeout(stopLoading(), 5000);
                       }, function (error) {
-                growl.error(error.data.errorMsg, {title: 'Error fetching ui.', ttl: 15000});
+
+                      if (typeof error.data.usrMsg !== 'undefined') {
+                          growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                      } else {
+                          growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                      }
                 stopLoading();
               });
             };
@@ -200,7 +221,6 @@ angular.module('hopsWorksApp')
                 JobService.getProjectName(self.projectId).then(
                         function (success) {
                           var projectName = success.data;
-
                 self.ui = "/hopsworks-api/kibana/app/kibana?projectId=" + self.projectId + 
                         "#/discover?_g=()&_a=(columns:!(logdate,host,priority,logger_name,log_message),"+
                         "filters:!(('$state':(store:appState),meta:(alias:!n,disabled:!f,index:'" + projectName.toLowerCase() 
@@ -209,7 +229,7 @@ angular.module('hopsWorksApp')
                         projectName.toLowerCase() +"_logs-*',key:jobname,negate:!f,params:(query:jupyter,type:phrase),"+
                         "type:phrase,value:jupyter),query:(match:(jobname:(query:jupyter,type:phrase))))),index:'" + projectName.toLowerCase() +
                         "_logs-*',interval:auto,query:(language:lucene,query:''),sort:!(logdate,desc))";
-          
+
                           self.current = "kibanaUI";
                           var iframe = document.getElementById('ui_iframe');
                           if (iframe !== null) {
@@ -217,15 +237,18 @@ angular.module('hopsWorksApp')
                           }
                           $timeout(stopLoading(), 1000);
                         }, function (error) {
-                  growl.error(error.data.errorMsg, {title: 'Error fetching project name',
-                    ttl: 15000});
+
+                        if (typeof error.data.usrMsg !== 'undefined') {
+                            growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                        } else {
+                            growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                        }
                   stopLoading();
                 });
               } else {
                 //if not jupyter we should have a job
                 self.ui = "/hopsworks-api/kibana/app/kibana?projectId=" + self.projectId + "#/discover?_g=()&_a=(columns:!(logdate,application,host,priority,logger_name,log_message),index:'"
                            + self.job.project.name.toLowerCase() +"_logs-*',interval:auto,query:(language:lucene,query:jobname=\"" + self.job.name +"\"),sort:!(logdate,desc))";
-
                 self.current = "kibanaUI";
                 var iframe = document.getElementById('ui_iframe');
                 if (iframe !== null) {
@@ -266,21 +289,14 @@ angular.module('hopsWorksApp')
                         }
                         $timeout(stopLoading(), 1000);
                       }, function (error) {
-                growl.error(error.data.errorMsg, {title: 'Error fetching ui.',
-                  ttl: 15000});
+
+                      if (typeof error.data.usrMsg !== 'undefined') {
+                          growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                      } else {
+                          growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                      }
                 stopLoading();
               });
-            };
-            self.vizopsUI = function () {
-              startLoading("Loading Vizops...");
-              getAppId(vizopsInt);
-            };
-            var vizopsInt = function () {
-              self.ui = "vizz";
-              self.current = "vizopsUI";
-              VizopsService.init(self.projectId, self.appId);
-              // The rest of the logic is handled by vizopsCtrl.js
-              stopLoading();
             };
             self.tfUI = function (tfSession) {
               startLoading("Loading Tensorboard...");
@@ -324,8 +340,6 @@ angular.module('hopsWorksApp')
               var ifram = document.getElementById('ui_iframe');
               if (self.current === "grafanaUI") {
                 self.grafanaUI();
-              } else if (self.current === "vizopsUI") {
-                self.vizopsUI();
               } else if (self.current === "jobUI") {
                 self.jobUI();
               } else if (self.current === "yarnUI") {
@@ -338,22 +352,23 @@ angular.module('hopsWorksApp')
                 ifram.contentWindow.location.reload();
               }
             };
-            /**
-             * Close the poller if the controller is destroyed.
-             */
-//            $scope.$on('$destroy', function () {
-//              $interval.cancel(self.poller);
-//            });
-//
-//            self.poller = $interval(function () {
-//              if (self.ui !== "") {
-//                $interval.cancel(self.poller);
-//                return;
-//              }
-//              getJobUI();
-//            }, 5000);
-//
-//          }]);
+
+            var getTensorBoardUrls = function () {
+              JobService.getTensorBoardUrls(self.projectId, self.appId).then(
+                      function (success) {
+                        self.tbUrls = success.data;
+                      }, function (error) {
+              });
+            };
+
+            getTensorBoardUrls();
+
+            var startPolling = function() {
+                self.poller = $interval(function() {
+                    getTensorBoardUrls();
+                }, 7000);
+            };
+            startPolling();
 
             angular.module('hopsWorksApp').directive('bindHtmlUnsafe', function ($parse, $compile) {
               return function ($scope, $element, $attrs) {

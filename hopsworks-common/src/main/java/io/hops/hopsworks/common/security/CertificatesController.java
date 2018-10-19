@@ -39,10 +39,12 @@
 package io.hops.hopsworks.common.security;
 
 import io.hops.hopsworks.common.dao.certificates.CertsFacade;
+import io.hops.hopsworks.common.dao.certificates.UserCerts;
 import io.hops.hopsworks.common.dao.project.Project;
 import io.hops.hopsworks.common.dao.project.team.ProjectTeam;
 import io.hops.hopsworks.common.dao.user.Users;
-import io.hops.hopsworks.common.exception.AppException;
+import io.hops.hopsworks.common.exception.HopsSecurityException;
+import io.hops.hopsworks.common.exception.RESTCodes;
 import io.hops.hopsworks.common.hdfs.HdfsUsersController;
 import io.hops.hopsworks.common.util.HopsUtils;
 import io.hops.security.HopsUtil;
@@ -53,7 +55,9 @@ import javax.ejb.EJB;
 import javax.ejb.Stateless;
 import javax.ejb.TransactionAttribute;
 import javax.ejb.TransactionAttributeType;
-import javax.ws.rs.core.Response;
+import javax.enterprise.inject.Any;
+import javax.enterprise.inject.Instance;
+import javax.inject.Inject;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -70,8 +74,7 @@ import java.util.logging.Logger;
 @Stateless
 @TransactionAttribute(TransactionAttributeType.NEVER)
 public class CertificatesController {
-  private final static Logger LOG = Logger.getLogger
-      (CertificatesController.class.getName());
+  private static final  Logger LOG = Logger.getLogger(CertificatesController.class.getName());
   
   @EJB
   private CertsFacade certsFacade;
@@ -79,7 +82,10 @@ public class CertificatesController {
   private CertificatesMgmService certificatesMgmService;
   @EJB
   private OpensslOperations opensslOperations;
-  
+  @Inject
+  @Any
+  private Instance<CertificateHandler> certificateHandlers;
+
   /**
    * Creates x509 certificates for a project specific user and project generic
    * @param project Associated project
@@ -134,12 +140,18 @@ public class CertificatesController {
       LOG.log(Level.FINE, "Created project generic certificates for project: "
           + project.getName());
     }
-  
-    certsFacade.putUserCerts(project.getName(), user.getUsername(), encryptedKey);
+
+    UserCerts uc = certsFacade.putUserCerts(project.getName(), user.getUsername(), encryptedKey);
+
+    // Run custom certificateHandlers
+    for (CertificateHandler certificateHandler : certificateHandlers) {
+      certificateHandler.generate(project, user, uc);
+    }
+
     return new AsyncResult<>(
         new CertsResult(project.getName(), user.getUsername()));
   }
-  
+
   @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
   public void deleteProjectCertificates(Project project) throws CAException, IOException {
     String projectName = project.getName();
@@ -155,6 +167,11 @@ public class CertificatesController {
         opensslOperations.revokeCertificate(certificateIdentifier, CertificateType.PROJECT_USER,
             false, false);
         opensslOperations.deleteUserCertificate(certificateIdentifier);
+
+        // Run custom handlers
+        for (CertificateHandler certificateHandler : certificateHandlers) {
+          certificateHandler.revoke(project, team.getUser());
+        }
       }
       opensslOperations.revokeCertificate(project.getProjectGenericUser(), CertificateType.PROJECT_USER,
           false, false);
@@ -186,17 +203,22 @@ public class CertificatesController {
       lock.unlock();
     }
     certsFacade.removeUserProjectCerts(project.getName(), user.getUsername());
+
+    // Run custom handlers
+    for (CertificateHandler certificateHandler : certificateHandlers) {
+      certificateHandler.revoke(project, user);
+    }
   }
   
   @TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
   public String extractCNFromCertificate(byte[] rawKeyStore, char[]
-      keyStorePwd) throws AppException {
+      keyStorePwd) throws HopsSecurityException {
     return extractCNFromCertificate(rawKeyStore, keyStorePwd, null);
   }
   
   @TransactionAttribute(TransactionAttributeType.NOT_SUPPORTED)
   public String extractCNFromCertificate(byte[] rawKeyStore,
-      char[] keystorePwd, String certificateAlias) throws AppException {
+      char[] keystorePwd, String certificateAlias) throws HopsSecurityException {
     try {
       
       X509Certificate certificate = getCertificateFromKeyStore(rawKeyStore, keystorePwd, certificateAlias);
@@ -211,9 +233,8 @@ public class CertificatesController {
       }
       return cn;
     } catch (GeneralSecurityException | IOException ex) {
-      LOG.log(Level.SEVERE, "Error while extracting CN from certificate", ex);
-      throw new AppException(Response.Status.INTERNAL_SERVER_ERROR
-          .getStatusCode(), ex.getMessage());
+      throw new HopsSecurityException(RESTCodes.SecurityErrorCode.CERT_CN_EXTRACT_ERROR, Level.SEVERE,
+        "certificateAlias: " + certificateAlias, ex.getMessage(), ex);
     }
   }
   

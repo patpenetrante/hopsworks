@@ -65,7 +65,7 @@ angular.module('hopsWorksApp')
               /**
                * Get all the jobs in the current project for the given type.
                * @param {type} projectId
-               * @param {type} type The name of the job type (e.g. Flink, Spark, Adam)
+               * @param {type} type The name of the job type (e.g. Flink, Spark)
                * @returns {unresolved} A list of defined jobs in the given project of the requested type.
                */
               getByProjectAndType: function (projectId, type) {
@@ -185,7 +185,15 @@ angular.module('hopsWorksApp')
               getExecutionUI: function (projectId, appId, isLivy) {
                 return $http.get('/api/project/' + projectId + '/jobs/' + appId + '/ui/' + isLivy);
               },
-              
+              /**
+               * Get the job ui of the given job.
+               * @param {type} projectId
+               * @param {type} appId
+               * @returns {unresolved} The TensorBoard Urls
+               */
+              getTensorBoardUrls: function (projectId, appId) {
+                return $http.get('/api/project/' + projectId + '/jobs/' + appId + '/tensorboard');
+              },
               /* Get the tensorboard URLs for the appid.
                * @param {type} projectId
                * @param {type} appId

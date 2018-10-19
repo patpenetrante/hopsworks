@@ -94,15 +94,16 @@ import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static io.hops.hopsworks.common.util.Settings.CERT_PASS_SUFFIX;
+import static io.hops.hopsworks.common.util.Settings.KEYSTORE_SUFFIX;
+import static io.hops.hopsworks.common.util.Settings.TRUSTSTORE_SUFFIX;
+
 @Singleton
 @ConcurrencyManagement(ConcurrencyManagementType.BEAN)
 @DependsOn("Settings")
 public class CertificateMaterializer {
   private static final Logger LOG = Logger.getLogger(CertificateMaterializer.class.getName());
   
-  private final static String KEYSTORE_SUFFIX = "__kstore.jks";
-  private final static String TRUSTSTORE_SUFFIX = "__tstore.jks";
-  private final static String CERT_PASS_SUFFIX = "__cert.key";
   private final static Pattern HDFS_SCHEME = Pattern.compile("^hdfs://.*");
   private final static int MAX_NUMBER_OF_RETRIES = 3;
   private final static long RETRY_WAIT_TIMEOUT = 10;
@@ -219,8 +220,8 @@ public class CertificateMaterializer {
     }
     transientDir = tmpDir.getAbsolutePath();
     String delayRaw = settings.getCertificateMaterializerDelay();
-    DELAY_VALUE = Settings.getConfTimeValue(delayRaw);
-    DELAY_TIMEUNIT = Settings.getConfTimeTimeUnit(delayRaw);
+    DELAY_VALUE = settings.getConfTimeValue(delayRaw);
+    DELAY_TIMEUNIT = settings.getConfTimeTimeUnit(delayRaw);
     
     try {
       String hostAddress = InetAddress.getLocalHost().getHostAddress();
@@ -903,7 +904,7 @@ public class CertificateMaterializer {
             
             Path trustStore = new Path(remoteDirectory + Path.SEPARATOR + key.getExtendedUsername()
                 + TRUSTSTORE_SUFFIX);
-            writeToHDFS(dfso, trustStore, material.getKeyStore().array());
+            writeToHDFS(dfso, trustStore, material.getTrustStore().array());
             dfso.setOwner(trustStore, ownerName, groupName);
             dfso.setPermission(trustStore, permissions);
   

@@ -144,7 +144,7 @@ public class ResponseMessages {
   public final static String PROJECT_OWNER_NOT_ALLOWED
           = "Removing the project owner is not allowed.";
   public final static String PROJECT_OWNER_ROLE_NOT_ALLOWED
-          = "Chaning the role of the project owner is not allowed.";
+          = "Changing the role of the project owner is not allowed.";
   public final static String FOLDER_INODE_NOT_CREATED
           = "Folder Inode could not be created in DB.";
   public final static String FOLDER_NAME_NOT_SET
@@ -269,11 +269,18 @@ public class ResponseMessages {
       + "Jupyter will not work properly. "
       + "Try recreating the following dir manually:";
   public final static String HIVE_ADD_FAILURE = "Failed to create the Hive database";
+
   public final static String JOBS_ADD_FAILURE = "Failed to create the Elastic/Kibana index for jobs";
+
+  public final static String EXPERIMENTS_ADD_FAILURE = "Failed to create the Elastic/Kibana index for experiments";
 
   // LLAP
   public final static String LLAP_STATUS_INVALID = "Unrecognized new LLAP status";
   public final static String LLAP_CLUSTER_ALREADY_UP = "LLAP cluster already up";
   public final static String LLAP_CLUSTER_ALREADY_DOWN = "LLAP cluster already down";
+
+  // TF Serving
+  public final static String SERVING_NOT_FOUND = "Serving not found";
+  public final static String SERVING_ID_NULL = "Serving ID is null";
 
 }

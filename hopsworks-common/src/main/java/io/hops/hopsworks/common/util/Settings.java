@@ -38,17 +38,34 @@
  */
 package io.hops.hopsworks.common.util;
 
+import com.google.common.base.Splitter;
 import io.hops.hopsworks.common.dao.jobs.description.Jobs;
-import static io.hops.hopsworks.common.dao.kafka.KafkaFacade.DLIMITER;
-import static io.hops.hopsworks.common.dao.kafka.KafkaFacade.SLASH_SEPARATOR;
 import io.hops.hopsworks.common.dao.user.UserFacade;
 import io.hops.hopsworks.common.dao.user.Users;
 import io.hops.hopsworks.common.dao.user.security.ua.UserAccountsEmailMessages;
 import io.hops.hopsworks.common.dao.util.Variables;
 import io.hops.hopsworks.common.dela.AddressJSON;
 import io.hops.hopsworks.common.dela.DelaClientType;
-import io.hops.hopsworks.common.exception.AppException;
 import io.hops.hopsworks.common.hdfs.HdfsUsersController;
+import org.apache.commons.codec.digest.DigestUtils;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.yarn.conf.YarnConfiguration;
+import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.WatchedEvent;
+import org.apache.zookeeper.Watcher;
+import org.apache.zookeeper.ZooKeeper;
+
+import javax.annotation.PostConstruct;
+import javax.ejb.ConcurrencyManagement;
+import javax.ejb.ConcurrencyManagementType;
+import javax.ejb.EJB;
+import javax.ejb.Singleton;
+import javax.persistence.EntityManager;
+import javax.persistence.EntityNotFoundException;
+import javax.persistence.NoResultException;
+import javax.persistence.PersistenceContext;
+import javax.persistence.TypedQuery;
 import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
@@ -71,31 +88,15 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import javax.annotation.PostConstruct;
-import javax.ejb.ConcurrencyManagement;
-import javax.ejb.ConcurrencyManagementType;
-import javax.ejb.EJB;
-import javax.ejb.Singleton;
-import javax.persistence.EntityManager;
-import javax.persistence.EntityNotFoundException;
-import javax.persistence.NoResultException;
-import javax.persistence.PersistenceContext;
-import javax.persistence.TypedQuery;
-import javax.ws.rs.core.Response;
-import org.apache.commons.codec.digest.DigestUtils;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.yarn.conf.YarnConfiguration;
-import org.apache.zookeeper.KeeperException;
-import org.apache.zookeeper.WatchedEvent;
-import org.apache.zookeeper.Watcher;
-import org.apache.zookeeper.ZooKeeper;
+
+import static io.hops.hopsworks.common.dao.kafka.KafkaFacade.DLIMITER;
+import static io.hops.hopsworks.common.dao.kafka.KafkaFacade.SLASH_SEPARATOR;
 
 @Singleton
 @ConcurrencyManagement(ConcurrencyManagementType.BEAN)
 public class Settings implements Serializable {
 
-  private static final Logger logger = Logger.getLogger(Settings.class.
+  private static final Logger LOGGER = Logger.getLogger(Settings.class.
       getName());
 
   @EJB
@@ -120,8 +121,8 @@ public class Settings implements Serializable {
   private void init() {
     try {
       setKafkaBrokers(getBrokerEndpoints());
-    } catch (AppException ex) {
-      logger.log(Level.SEVERE, null, ex);
+    } catch (IOException | KeeperException | InterruptedException ex) {
+      LOGGER.log(Level.SEVERE, null, ex);
     }
   }
 
@@ -188,8 +189,6 @@ public class Settings implements Serializable {
   public static final String VARIABLE_LLAP_APP_ID = "hive_llap_app_id";
   public static final String VARIABLE_LLAP_START_PROC = "hive_llap_start_proc";
 
-  private static final String VARIABLE_ADAM_USER = "adam_user";
-  private static final String VARIABLE_ADAM_DIR = "adam_dir";
   private static final String VARIABLE_TWOFACTOR_AUTH = "twofactor_auth";
   private static final String VARIABLE_TWOFACTOR_EXCLUD = "twofactor-excluded-groups";
   private static final String VARIABLE_KAFKA_DIR = "kafka_dir";
@@ -270,6 +269,29 @@ public class Settings implements Serializable {
   private static final String VARIABLE_TENSORFLOW_VERSION = "tensorflow_version";
   private static final String VARIABLE_CUDA_VERSION = "cuda_version";
   private static final String VARIABLE_HOPSWORKS_VERSION = "hopsworks_version";
+  
+  //Used by RESTException to include devMsg or not in response
+  private static final String VARIABLE_HOPSWORKS_REST_LOG_LEVEL = "hopsworks_rest_log_level";
+  
+  /* -------------------- TfServing  --------------- */
+  private static final String VARIABLE_TF_SERVING_MONITOR_INT = "tf_serving_monitor_int";
+
+  /* -------------------- Kubernetes --------------- */
+  private static final String VARIABLE_KUBEMASTER_URL = "kube_master_url";
+  private static final String VARIABLE_KUBE_USER = "kube_user";
+  private static final String VARIABLE_KUBE_CA_CERTFILE = "kube_ca_certfile";
+  private static final String VARIABLE_KUBE_CLIENT_KEYFILE = "kube_client_keyfile";
+  private static final String VARIABLE_KUBE_CLIENT_CERTFILE = "kube_client_certfile";
+  private static final String VARIABLE_KUBE_CLIENT_KEYPASS = "kube_client_keypass";
+  private static final String VARIABLE_KUBE_TRUSTSTORE_PATH = "kube_truststore_path";
+  private static final String VARIABLE_KUBE_TRUSTSTORE_KEY = "kube_truststore_key";
+  private static final String VARIABLE_KUBE_KEYSTORE_PATH = "kube_keystore_path";
+  private static final String VARIABLE_KUBE_KEYSTORE_KEY = "kube_keystore_key";
+  private static final String VARIABLE_KUBE_CA_PATH = "kube_ca_path";
+  private static final String VARIABLE_KUBE_CA_PASSWORD = "kube_ca_password";
+  private static final String VARIABLE_KUBE_REGISTRY = "kube_registry";
+  private static final String VARIABLE_KUBE_MAX_SERVING = "kube_max_serving_instances";
+
 
   private String setVar(String varName, String defaultValue) {
     Variables userName = findById(varName);
@@ -349,7 +371,7 @@ public class Settings implements Serializable {
         }
       }
     } catch (NumberFormatException ex) {
-      logger.info("Error - not an integer! " + varName
+      LOGGER.info("Error - not an integer! " + varName
           + " should be an integer. Value was " + defaultValue);
     }
     return defaultValue;
@@ -365,10 +387,21 @@ public class Settings implements Serializable {
         }
       }
     } catch (NumberFormatException ex) {
-      logger.info("Error - not a long! " + varName
+      LOGGER.info("Error - not a long! " + varName
           + " should be an integer. Value was " + defaultValue);
     }
 
+    return defaultValue;
+  }
+  
+  private LOG_LEVEL setLogLevelVar(String varName, LOG_LEVEL defaultValue) {
+    Variables var = findById(varName);
+    if (var != null && var.getValue() != null) {
+      String val = var.getValue();
+      if (val != null && !val.isEmpty()) {
+        return LOG_LEVEL.valueOf(val);
+      }
+    }
     return defaultValue;
   }
 
@@ -408,8 +441,6 @@ public class Settings implements Serializable {
       ZEPPELIN_SYNC_INTERVAL = setLongVar(VARIABLE_ZEPPELIN_SYNC_INTERVAL, ZEPPELIN_SYNC_INTERVAL);
       HADOOP_VERSION = setVar(VARIABLE_HADOOP_VERSION, HADOOP_VERSION);
       JUPYTER_DIR = setDirVar(VARIABLE_JUPYTER_DIR, JUPYTER_DIR);
-      ADAM_USER = setVar(VARIABLE_ADAM_USER, ADAM_USER);
-      ADAM_DIR = setDirVar(VARIABLE_ADAM_DIR, ADAM_DIR);
       MYSQL_DIR = setDirVar(VARIABLE_MYSQL_DIR, MYSQL_DIR);
       HADOOP_DIR = setDirVar(VARIABLE_HADOOP_DIR, HADOOP_DIR);
       HOPSWORKS_INSTALL_DIR = setDirVar(VARIABLE_HOPSWORKS_DIR,
@@ -448,7 +479,7 @@ public class Settings implements Serializable {
           KAFKA_DEFAULT_NUM_PARTITIONS);
       KAFKA_DEFAULT_NUM_REPLICAS = setDirVar(VARIABLE_KAFKA_NUM_REPLICAS,
           KAFKA_DEFAULT_NUM_REPLICAS);
-      YARN_DEFAULT_QUOTA = setDirVar(VARIABLE_YARN_DEFAULT_QUOTA,
+      YARN_DEFAULT_QUOTA = setIntVar(VARIABLE_YARN_DEFAULT_QUOTA,
           YARN_DEFAULT_QUOTA);
       YARN_WEB_UI_IP = setIpVar(VARIABLE_YARN_WEB_UI_IP, YARN_WEB_UI_IP);
       HDFS_WEB_UI_IP = setIpVar(VARIABLE_HDFS_WEB_UI_IP, HDFS_WEB_UI_IP);
@@ -493,6 +524,9 @@ public class Settings implements Serializable {
       serviceKeyRotationInterval = setStrVar(SERVICE_KEY_ROTATION_INTERVAL_KEY, serviceKeyRotationInterval);
       applicationCertificateValidityPeriod = setStrVar(APPLICATION_CERTIFICATE_VALIDITY_PERIOD_KEY,
           applicationCertificateValidityPeriod);
+      tensorBoardMaxLastAccessed = setIntVar(TENSORBOARD_MAX_LAST_ACCESSED, tensorBoardMaxLastAccessed);
+      sparkUILogsOffset = setIntVar(SPARK_UI_LOGS_OFFSET, sparkUILogsOffset);
+
       populateDelaCache();
       populateLDAPCache();
       //Set Zeppelin Default Interpreter
@@ -522,6 +556,30 @@ public class Settings implements Serializable {
       TENSORFLOW_VERSION = setStrVar(VARIABLE_TENSORFLOW_VERSION, TENSORFLOW_VERSION);
       CUDA_VERSION = setStrVar(VARIABLE_CUDA_VERSION, CUDA_VERSION);
       HOPSWORKS_VERSION = setStrVar(VARIABLE_HOPSWORKS_VERSION, HOPSWORKS_VERSION);
+      HOPSWORKS_REST_LOG_LEVEL = setLogLevelVar(VARIABLE_HOPSWORKS_REST_LOG_LEVEL, HOPSWORKS_REST_LOG_LEVEL);
+      
+      PROVIDED_PYTHON_LIBRARY_NAMES = toSetFromCsv(
+          setStrVar(VARIABLE_PROVIDED_PYTHON_LIBRARY_NAMES, DEFAULT_PROVIDED_PYTHON_LIBRARY_NAMES),",");
+      PREINSTALLED_PYTHON_LIBRARY_NAMES = toSetFromCsv(
+          setStrVar(VARIABLE_PREINSTALLED_PYTHON_LIBRARY_NAMES, DEFAULT_PREINSTALLED_PYTHON_LIBRARY_NAMES),
+          ",");
+
+      TF_SERVING_MONITOR_INT = setStrVar(VARIABLE_TF_SERVING_MONITOR_INT, TF_SERVING_MONITOR_INT);
+
+      KUBE_USER = setStrVar(VARIABLE_KUBE_USER, KUBE_USER);
+      KUBEMASTER_URL = setStrVar(VARIABLE_KUBEMASTER_URL, KUBEMASTER_URL);
+      KUBE_CA_CERTFILE = setStrVar(VARIABLE_KUBE_CA_CERTFILE, KUBE_CA_CERTFILE);
+      KUBE_CLIENT_KEYFILE = setStrVar(VARIABLE_KUBE_CLIENT_KEYFILE, KUBE_CLIENT_KEYFILE);
+      KUBE_CLIENT_CERTFILE = setStrVar(VARIABLE_KUBE_CLIENT_CERTFILE, KUBE_CLIENT_CERTFILE);
+      KUBE_CLIENT_KEYPASS = setStrVar(VARIABLE_KUBE_CLIENT_KEYPASS, KUBE_CLIENT_KEYPASS);
+      KUBE_TRUSTSTORE_PATH = setStrVar(VARIABLE_KUBE_TRUSTSTORE_PATH, KUBE_TRUSTSTORE_PATH);
+      KUBE_TRUSTSTORE_KEY = setStrVar(VARIABLE_KUBE_TRUSTSTORE_KEY,  KUBE_TRUSTSTORE_KEY);
+      KUBE_KEYSTORE_PATH = setStrVar(VARIABLE_KUBE_KEYSTORE_PATH, KUBE_KEYSTORE_PATH);
+      KUBE_KEYSTORE_KEY = setStrVar(VARIABLE_KUBE_KEYSTORE_KEY, KUBE_KEYSTORE_KEY);
+      KUBE_CA_PATH = setStrVar(VARIABLE_KUBE_CA_PATH, KUBE_CA_PATH);
+      KUBE_CA_PASSWORD = setStrVar(VARIABLE_KUBE_CA_PASSWORD, KUBE_CA_PASSWORD);
+      KUBE_REGISTRY = setStrVar(VARIABLE_KUBE_REGISTRY, KUBE_REGISTRY);
+      KUBE_MAX_SERVING_INSTANCES = setIntVar(VARIABLE_KUBE_MAX_SERVING, KUBE_MAX_SERVING_INSTANCES);
 
       cached = true;
     }
@@ -620,6 +678,8 @@ public class Settings implements Serializable {
 
   public static final String SERVING_DIRS = "/serving/";
 
+  public static final String TENSORBOARD_DIRS = "/tensorboard/";
+
   private String SPARK_DIR = "/srv/hops/spark";
   public static final String SPARK_EXAMPLES_DIR = "/examples/jars";
 
@@ -651,9 +711,7 @@ public class Settings implements Serializable {
   public static final String SPARK_EXECUTORENV_LIBHDFS_OPTS="spark.executorEnv.LIBHDFS_OPTS";
   public static final String SPARK_DRIVER_EXTRALIBRARYPATH="spark.driver.extraLibraryPath";
   public static final String SPARK_DRIVER_EXTRAJAVAOPTIONS="spark.driver.extraJavaOptions";
-  
-  
-  
+
   //PySpark properties
   public static final String SPARK_APP_NAME_ENV = "spark.app.name";
   public static final String SPARK_EXECUTORENV_PYTHONPATH = "spark.executorEnv.PYTHONPATH";
@@ -662,12 +720,12 @@ public class Settings implements Serializable {
   public static final String SPARK_EXECUTORENV_HADOOP_USER_NAME = "spark.executorEnv.HADOOP_USER_NAME";
   public static final String SPARK_YARN_IS_PYTHON_ENV = "spark.yarn.isPython";
   public static final String SPARK_YARN_SECONDARY_JARS = "spark.yarn.secondary.jars";
+
   public static final String SPARK_PYTHONPATH = "PYTHONPATH";
   public static final String SPARK_PYSPARK_PYTHON = "PYSPARK_PYTHON";
+  public static final String SPARK_EXECUTORENV_PYSPARK_PYTHON = "spark.executorEnv."+SPARK_PYSPARK_PYTHON ;
   //TFSPARK properties
   public static final String SPARK_TF_GPUS_ENV = "spark.executor.gpus";
-  public static final String SPARK_TF_PS_ENV = "spark.tensorflow.num.ps";
-  public static final String SPARK_TF_ENV = "spark.tensorflow.application";
 
   //Spark log4j and metrics properties
   public static final String SPARK_LOG4J_CONFIG = "log4j.configuration";
@@ -708,13 +766,6 @@ public class Settings implements Serializable {
 
   public synchronized String getSparkConfFile() {
     return getSparkConfDir() + SPARK_CONF_FILE;
-  }
-
-  private String ADAM_USER = "glassfish";
-
-  public synchronized String getAdamUser() {
-    checkCache();
-    return ADAM_USER;
   }
 
   // "/tmp" by default
@@ -943,9 +994,9 @@ public class Settings implements Serializable {
     return ZEPPELIN_USER;
   }
 
-  private String YARN_DEFAULT_QUOTA = "60000";
+  private Integer YARN_DEFAULT_QUOTA = 60000;
 
-  public synchronized String getYarnDefaultQuota() {
+  public synchronized Integer getYarnDefaultQuota() {
     checkCache();
     return YARN_DEFAULT_QUOTA;
   }
@@ -1077,7 +1128,7 @@ public class Settings implements Serializable {
   public static final String HADOOP_USER_NAME = "HADOOP_USER_NAME";
   public static final String YARNTF_HOME_DIR = "YARNTF_HOME_DIR";
   public static final String YARNTF_STAGING_DIR = ".yarntfStaging";
-  public static final String HOPS_TENSORFLOW_TOUR_DATA = "tensorflow_demo";
+  public static final String HOPS_DEEP_LEARNING_TOUR_DATA = "tensorflow_demo";
 
   public String getTensorFlowJarPath(String tfUser) {
     return "hdfs:///user/" + tfUser + "/" + TENSORFLOW_JAR;
@@ -1162,16 +1213,6 @@ public class Settings implements Serializable {
    * Static final fields are allowed in session beans:
    * http://stackoverflow.com/questions/9141673/static-variables-restriction-in-session-beans
    */
-//ADAM constants
-  public static final String ADAM_MAINCLASS = "org.bdgenomics.adam.cli.ADAMMain";
-//  public static final String ADAM_DEFAULT_JAR_HDFS_PATH = "hdfs:///user/adam/repo/adam-cli.jar";
-  //Or: "adam-cli/target/appassembler/repo/org/bdgenomics/adam/adam-cli/0.15.1-SNAPSHOT/adam-cli-0.15.1-SNAPSHOT.jar"
-  public static final String ADAM_DEFAULT_OUTPUT_PATH = "Logs/Adam/";
-  public static final String ADAM_DEFAULT_HDFS_REPO = "/user/adam/repo/";
-
-  public String getAdamJarHdfsPath() {
-    return "hdfs:///user/" + getAdamUser() + "/adam-cli.jar";
-  }
 
   //Directory names in HDFS
   public static final String DIR_ROOT = "Projects";
@@ -1510,6 +1551,13 @@ public class Settings implements Serializable {
     checkCache();
     return "https://" + HOPSWORKS_REST_ENDPOINT;
   }
+  
+  private LOG_LEVEL HOPSWORKS_REST_LOG_LEVEL = LOG_LEVEL.PROD;
+  
+  public synchronized LOG_LEVEL getHopsworksRESTLogLevel() {
+    checkCache();
+    return HOPSWORKS_REST_LOG_LEVEL;
+  }
 
   private String SUPPORT_EMAIL_ADDR = "support@hops.io";
 
@@ -1659,6 +1707,9 @@ public class Settings implements Serializable {
   //hopsworks user prefix username prefix
   public static final String USERNAME_PREFIX = "meb";
 
+  public static final String KEYSTORE_SUFFIX = "__kstore.jks";
+  public static final String TRUSTSTORE_SUFFIX = "__tstore.jks";
+  public static final String CERT_PASS_SUFFIX = "__cert.key";
   public static final String K_CERTIFICATE = "k_certificate";
   public static final String T_CERTIFICATE = "t_certificate";
   private static final String CA_TRUSTSTORE_NAME = "cacerts.jks";
@@ -1695,6 +1746,7 @@ public class Settings implements Serializable {
   
   //Elastic log index pattern
   public static final String ELASTIC_LOG_INDEX_REGEX = ".*_logs-\\d{4}.\\d{2}.\\d{2}";
+  public static final String ELASTIC_EXPERIMENTS_INDEX = "experiments";
   public static final String ELASTIC_SAVED_OBJECTS = "saved_objects";
   public static final String ELASTIC_VISUALIZATION = "visualization";
   public static final String ELASTIC_SAVED_SEARCH = "search";
@@ -1801,7 +1853,8 @@ public class Settings implements Serializable {
   public static enum ServiceDataset {
     ZEPPELIN("notebook", "Contains Zeppelin notebooks."),
     JUPYTER("Jupyter", "Contains Jupyter notebooks."),
-    SERVING("Models", "Contains models to be used for serving.");
+    SERVING("Models", "Contains models to be used for serving."),
+    EXPERIMENTS("Experiments", "Contains experiments from using the hops python api");
 
     private final String name;
     private final String description;
@@ -1864,7 +1917,7 @@ public class Settings implements Serializable {
     try {
       return query.getResultList();
     } catch (EntityNotFoundException ex) {
-      logger.log(Level.SEVERE, ex.getMessage(), ex);
+      LOGGER.log(Level.SEVERE, ex.getMessage(), ex);
     } catch (NoResultException ex) {
     }
     return new ArrayList<>();
@@ -2447,19 +2500,17 @@ public class Settings implements Serializable {
     this.kafkaBrokers.clear();
     this.kafkaBrokers.addAll(kafkaBrokers);
   }
-
-  public Set<String> getBrokerEndpoints() throws AppException {
-
+  
+  public Set<String> getBrokerEndpoints() throws IOException, KeeperException, InterruptedException {
     Set<String> brokerList = new HashSet<>();
-    ZooKeeper zk = null;
+    ZooKeeper zk;
+    zk = new ZooKeeper(getZkConnectStr(),
+      Settings.ZOOKEEPER_SESSION_TIMEOUT_MS, new ZookeeperWatcher());
     try {
-      zk = new ZooKeeper(getZkConnectStr(),
-          Settings.ZOOKEEPER_SESSION_TIMEOUT_MS, new ZookeeperWatcher());
-
       List<String> ids = zk.getChildren("/brokers/ids", false);
       for (String id : ids) {
         String brokerInfo = new String(zk.getData("/brokers/ids/" + id,
-            false, null));
+          false, null));
         String[] tokens = brokerInfo.split(DLIMITER);
         for (String str : tokens) {
           if (str.contains(SLASH_SEPARATOR) && str.startsWith(KAFKA_BROKER_PROTOCOL)) {
@@ -2467,22 +2518,9 @@ public class Settings implements Serializable {
           }
         }
       }
-    } catch (IOException ex) {
-      throw new AppException(Response.Status.NOT_FOUND.getStatusCode(),
-          "Unable to find the zookeeper server: " + ex);
-    } catch (KeeperException | InterruptedException ex) {
-      throw new AppException(Response.Status.NOT_FOUND.getStatusCode(),
-          "Unable to retrieve seed brokers from the kafka cluster: " + ex);
     } finally {
-      if (zk != null) {
-        try {
-          zk.close();
-        } catch (InterruptedException ex) {
-          logger.log(Level.SEVERE, null, ex.getMessage());
-        }
-      }
+      zk.close();
     }
-
     return brokerList;
   }
 
@@ -2638,8 +2676,26 @@ public class Settings implements Serializable {
     checkCache();
     return applicationCertificateValidityPeriod;
   }
-  
-  public static Long getConfTimeValue(String configurationTime) {
+
+  // TensorBoard kill rotation interval in milliseconds
+  private static final String TENSORBOARD_MAX_LAST_ACCESSED = "tensorboard_max_last_accessed";
+  private int tensorBoardMaxLastAccessed = 1800000;
+
+  public synchronized int getTensorBoardMaxLastAccessed() {
+    checkCache();
+    return tensorBoardMaxLastAccessed;
+  }
+
+  // TensorBoard kill rotation interval in milliseconds
+  private static final String SPARK_UI_LOGS_OFFSET = "spark_ui_logs_offset";
+  private int sparkUILogsOffset = 512000;
+
+  public synchronized int getSparkUILogsOffset() {
+    checkCache();
+    return sparkUILogsOffset;
+  }
+
+  public Long getConfTimeValue(String configurationTime) {
     Matcher matcher = TIME_CONF_PATTERN.matcher(configurationTime.toLowerCase());
     if (!matcher.matches()) {
       throw new IllegalArgumentException("Invalid time in configuration: " + configurationTime);
@@ -2647,7 +2703,7 @@ public class Settings implements Serializable {
     return Long.parseLong(matcher.group(1));
   }
 
-  public static TimeUnit getConfTimeTimeUnit(String configurationTime) {
+  public TimeUnit getConfTimeTimeUnit(String configurationTime) {
     Matcher matcher = TIME_CONF_PATTERN.matcher(configurationTime.toLowerCase());
     if (!matcher.matches()) {
       throw new IllegalArgumentException("Invalid time in configuration: " + configurationTime);
@@ -2659,6 +2715,32 @@ public class Settings implements Serializable {
     return timeUnitStr == null ? TimeUnit.MINUTES : TIME_SUFFIXES.get(timeUnitStr.toLowerCase());
   }
 
+  private Set<String> toSetFromCsv(String csv, String separator) {
+    return new HashSet<>(Splitter.on(separator).trimResults().splitToList(csv));
+  }
+  
+  // User upgradable libraries we installed for them
+  private Set<String> PROVIDED_PYTHON_LIBRARY_NAMES;
+  private static final String VARIABLE_PROVIDED_PYTHON_LIBRARY_NAMES = "provided_python_lib_names";
+  private static final String DEFAULT_PROVIDED_PYTHON_LIBRARY_NAMES =
+      "hops, pandas, tensorflow-serving-api, hopsfacets, mmlspark, numpy";
+  
+  public synchronized Set<String> getProvidedPythonLibraryNames() {
+    checkCache();
+    return PROVIDED_PYTHON_LIBRARY_NAMES;
+  }
+  
+  // Libraries we preinstalled users should not mess with
+  private Set<String> PREINSTALLED_PYTHON_LIBRARY_NAMES;
+  private static final String VARIABLE_PREINSTALLED_PYTHON_LIBRARY_NAMES = "preinstalled_python_lib_names";
+  private static final String DEFAULT_PREINSTALLED_PYTHON_LIBRARY_NAMES =
+      "tensorflow-gpu, tensorflow, pydoop, pyspark, tensorboard";
+  
+  public synchronized Set<String> getPreinstalledPythonLibraryNames() {
+    checkCache();
+    return PREINSTALLED_PYTHON_LIBRARY_NAMES;
+  }
+  
   private String HOPSWORKS_VERSION;
 
   public synchronized String getHopsworksVersion() {
@@ -2826,5 +2908,117 @@ public class Settings implements Serializable {
     checkCache();
     return ZOOKEEPER_VERSION;
   }
+  
+  // -------------------------------- Kubernetes ----------------------------------------------//
+  private String KUBE_USER = "hopsworks";
+  public synchronized String getKubeUser() {
+    checkCache();
+    return KUBE_USER;
+  }
 
+  private String KUBEMASTER_URL = "https://192.168.68.102:6443";
+  public synchronized String getKubeMasterUrl() {
+    checkCache();
+    return KUBEMASTER_URL;
+  }
+
+  private String KUBE_CA_CERTFILE = "/srv/hops/certs-dir/certs/ca.cert.pem";
+  public synchronized String getKubeCaCertfile() {
+    checkCache();
+    return KUBE_CA_CERTFILE;
+  }
+
+  private String KUBE_CLIENT_KEYFILE = "/srv/hops/certs-dir/kube/hopsworks/hopsworks.key.pem";
+  public synchronized String getKubeClientKeyfile() {
+    checkCache();
+    return KUBE_CLIENT_KEYFILE;
+  }
+
+  private String KUBE_CLIENT_CERTFILE = "/srv/hops/certs-dir/kube/hopsworks/hopsworks.cert.pem";
+  public synchronized String getKubeClientCertfile() {
+    checkCache();
+    return KUBE_CLIENT_CERTFILE;
+  }
+
+  private String KUBE_CLIENT_KEYPASS = "adminpw";
+  public synchronized String getKubeClientKeypass() {
+    checkCache();
+    return KUBE_CLIENT_KEYPASS;
+  }
+
+  private String KUBE_TRUSTSTORE_PATH = "/srv/hops/certs-dir/kube/hopsworks/hopsworks__tstore.jks";
+  public synchronized String getKubeTruststorePath() {
+    checkCache();
+    return KUBE_TRUSTSTORE_PATH;
+  }
+
+  private String KUBE_TRUSTSTORE_KEY = "adminpw";
+  public synchronized String getKubeTruststoreKey() {
+    checkCache();
+    return KUBE_TRUSTSTORE_KEY;
+  }
+
+  private String KUBE_KEYSTORE_PATH = "/srv/hops/certs-dir/kube/hopsworks/hopsworks__kstore.jks";
+  public synchronized String getKubeKeystorePath() {
+    checkCache();
+    return KUBE_KEYSTORE_PATH;
+  }
+
+  private String KUBE_KEYSTORE_KEY = "adminpw";
+  public synchronized String getKubeKeystoreKey() {
+    checkCache();
+    return KUBE_KEYSTORE_KEY;
+  }
+
+  private String KUBE_CA_PATH = "/srv/hops/certs-dir/kube";
+  public synchronized String getKubeCAPath() {
+    checkCache();
+    return KUBE_CA_PATH;
+  }
+
+  private String KUBE_CA_PASSWORD = "adminpw";
+  public synchronized String getKubeCAPassword() {
+    checkCache();
+    return KUBE_CA_PASSWORD;
+  }
+
+  private String KUBE_REGISTRY = "registry.docker-registry.svc.cluster.local";
+  public synchronized String getKubeRegistry() {
+    checkCache();
+    return KUBE_REGISTRY;
+  }
+
+  private Integer KUBE_MAX_SERVING_INSTANCES = 10;
+  public synchronized Integer getKubeMaxServingInstances() {
+    checkCache();
+    return KUBE_MAX_SERVING_INSTANCES;
+  }
+
+  private String TF_SERVING_MONITOR_INT = "30s";
+  public synchronized String getTFServingMonitorInt() {
+    checkCache();
+    return TF_SERVING_MONITOR_INT;
+  }
+  
+  public enum LOG_LEVEL {
+    DEV(0, "User and Dev messages as well as stack trace are returned to client to client."),
+    TEST(1, "User and Dev messages are returned to client to client."),
+    PROD(2, "User message is returned to client to client.");
+    
+    private final int level;
+    private final String description;
+    
+    LOG_LEVEL(int level, String description) {
+      this.level = level;
+      this.description = description;
+    }
+    
+    public int getLevel() {
+      return level;
+    }
+    
+    public String getDescription() {
+      return description;
+    }
+  }
 }
