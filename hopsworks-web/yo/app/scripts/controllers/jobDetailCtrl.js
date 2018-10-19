@@ -86,7 +86,11 @@ angular.module('hopsWorksApp')
                         self.setupInfo();
                         initScheduler();
                       }, function (error) {
-                growl.error(error.data.errorMsg, {title: 'Error fetching job configuration.', ttl: 15000});
+                      if (typeof error.data.usrMsg !== 'undefined') {
+                          growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                      } else {
+                          growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                      }
               });
             };
 
@@ -96,7 +100,11 @@ angular.module('hopsWorksApp')
                         self.job.executions = success.data;
                         self.showExecutions = success.data.length > 0;
                       }, function (error) {
-                growl.error(error.data.errorMsg, {title: 'Error fetching execution history.', ttl: 15000});
+                      if (typeof error.data.usrMsg !== 'undefined') {
+                          growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                      } else {
+                          growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                      }
               });
             };
             
@@ -109,15 +117,9 @@ angular.module('hopsWorksApp')
               if (self.job.runConfig.type === "sparkJobConfiguration") {
                 self.jobtype = "Spark";
                 self.execFile = getFileName(job.runConfig.appPath);
-              } else if (self.job.runConfig.type === "adamJobConfiguration") {
-                self.jobtype = "ADAM";
-                self.execFile = job.runConfig.selectedCommand.command;
               } else if (self.job.runConfig.type === "flinkJobConfiguration") {
                 self.jobtype = "Flink";
                 self.execFile = getFileName(job.runConfig.jarPath);
-              } else if (self.job.runConfig.type === "tensorFlowJobConfiguration") {
-                self.jobtype = "TensorFlow";
-                self.execFile = getFileName(job.runConfig.appPath);
               }
             };
             
@@ -134,7 +136,11 @@ angular.module('hopsWorksApp')
                           getExecutions();
                           growl.success(success.data.successMessage, {title: 'Success', ttl: 3000});
                         }, function (error) {
-                  growl.error(error.data.errorMsg, {title: 'Error', ttl: 15000});
+                        if (typeof error.data.usrMsg !== 'undefined') {
+                            growl.error(error.data.usrMsg, {title: error.data.errorMsg, ttl: 8000});
+                        } else {
+                            growl.error("", {title: error.data.errorMsg, ttl: 8000});
+                        }
                 });             
               } else {
                 growl.info("Select a date", {title: 'Required', ttl: 3000});

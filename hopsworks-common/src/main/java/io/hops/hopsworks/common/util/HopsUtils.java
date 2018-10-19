@@ -237,10 +237,9 @@ public class HopsUtils {
    * @param projectName
    * @param remoteFSDir
    * @param certificateMaterializer
-   * @throws IOException
    */
   public static void cleanupCertificatesForProject(String projectName,
-      String remoteFSDir, CertificateMaterializer certificateMaterializer, Settings settings) throws IOException {
+      String remoteFSDir, CertificateMaterializer certificateMaterializer, Settings settings) {
     
     certificateMaterializer.removeCertificatesLocal(projectName);
     
@@ -257,11 +256,10 @@ public class HopsUtils {
    * @param username
    * @param remoteFSDir
    * @param certificateMaterializer
-   * @throws IOException
    */
   public static void cleanupCertificatesForUserCustomDir(String username,
       String projectName, String remoteFSDir, CertificateMaterializer certificateMaterializer, String directory,
-      Settings settings) throws IOException {
+      Settings settings) {
 
     certificateMaterializer.removeCertificatesLocalCustomDir(username, projectName, directory);
     String projectSpecificUsername = projectName + HdfsUsersController
@@ -456,9 +454,7 @@ public class HopsUtils {
                 jobSystemProperties.put(Settings.K_CERTIFICATE, f_k_cert.toString());
                 jobSystemProperties.put(Settings.T_CERTIFICATE, t_k_cert.toString());
                 break;
-              case TENSORFLOW:
               case PYSPARK:
-              case TFSPARK:
               case SPARK:
                 Map<String, File> certs = new HashMap<>();
                 certs.put(Settings.K_CERTIFICATE, new File(
@@ -695,7 +691,7 @@ public class HopsUtils {
 
   /**
    * Convert processing quota from human friendly to seconds
-   * The format accepted is -?[0-9]{1,}:([0-9]{1,2}:){2}[0-9]{1,2}
+   * The format accepted is -?[0-9]+:([0-9]+:){2}[0-9]+
    * @param quota
    * @return
    */

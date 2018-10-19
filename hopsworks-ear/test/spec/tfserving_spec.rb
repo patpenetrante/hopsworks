@@ -36,69 +36,40 @@
  DAMAGES OR  OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 =end
-describe 'tfserving' do
-  after (:all){clean_projects}
-  describe "#create" do
-    context 'without authentication' do
-      before :all do
-        with_valid_project
-        reset_session
-      end
-      it "not authenticated" do
-        post "#{ENV['HOPSWORKS_API']}/project/#{@project[:id]}/tfserving/", {hdfsModelPath: "hdfs:///Projects/#{@project[:projectname]}/Models/mnist/1/model.pb", enableBatching: true}
-        expect_json(errorMsg: "Client not authorized for this invocation")
-        expect_status(401)
-      end
-    end
+describe "On #{ENV['OS']}" do
+  describe 'tfserving' do
+    after (:all){clean_projects}
 
-    context 'with authentication' do
-      before :all do
-        with_valid_project
-      end
-      it 'models dataset should exist' do
-        post "#{ENV['HOPSWORKS_API']}/project/#{@project[:id]}/dataset/createTopLevelDataSet", {name: "Models", description: "test dataset", searchable: true, generateReadme: true}
-        # expect_json(errorMsg: "Invalid folder name for DataSet: A directory with the same name already exists. If you want to replace it delete it first then try recreating.")
-        expect_status(400)
-      end
-      it 'non-existing .pb file should fail creating serving' do
-        post "#{ENV['HOPSWORKS_API']}/project/#{@project[:id]}/tfserving/", {hdfsModelPath: "hdfs:///Projects/#{@project[:projectname]}/Models/mnist/1/model.pb", enableBatching: true}
-        expect_status(404)
-      end
-      # ******* Commenting out until it is fixed for CentOS *******
+    describe "#create" do
 
-      # it 'serving lifecycle' do
-      #   post "#{ENV['HOPSWORKS_API']}/project/#{@project[:id]}/dataset/", {name: "Models/mnist", description: "", searchable: true, template: 0}
-      #   expect_status(200)
-      #   post "#{ENV['HOPSWORKS_API']}/project/#{@project[:id]}/dataset/", {name: "Models/mnist/1", description: "", searchable: true, template: 0}
-      #   expect_status(200)
-      #   post "#{ENV['HOPSWORKS_API']}/project/#{@project[:id]}/dataset/", {name: "Models/mnist/1/mnist.pb", description: "", searchable: true, template: 0}
-      #   expect_status(200)
-      #
-      #   post "#{ENV['HOPSWORKS_API']}/project/#{@project[:id]}/tfserving/", {hdfsModelPath: "hdfs:///Projects/#{@project[:projectname]}/Models/mnist/1/mnist.pb", enableBatching: true}
-      #   expect_status(201)
-      #
-      #   get "#{ENV['HOPSWORKS_API']}/project/#{@project[:id]}/tfserving/"
-      #   expect_status(200)
-      #
-      #   serving = json_body.detect { |serving| serving[:modelName] == "mnist" }
-      #   serving_id = serving[:id]
-      #
-      #   # Start the serving
-      #   post "#{ENV['HOPSWORKS_API']}/project/#{@project[:id]}/tfserving/start/#{serving_id}"
-      #   expect_status(200)
-      #
-      #   # Get the logs
-      #   get "#{ENV['HOPSWORKS_API']}/project/#{@project[:id]}/tfserving/logs/#{serving_id}"
-      #   expect_status(200)
-      #
-      #   # Stop the serving
-      #   post "#{ENV['HOPSWORKS_API']}/project/#{@project[:id]}/tfserving/stop/#{serving_id}"
-      #   expect_status(200)
-      #
-      #   # Delete serving
-      #   delete "#{ENV['HOPSWORKS_API']}/project/#{@project[:id]}/tfserving/#{serving_id}"
-      #   expect_status(200
-      # end
+      context 'without authentication' do
+        before :all do
+          with_valid_project
+          reset_session
+        end
+
+        it "should fail to create the serving" do
+          put "#{ENV['HOPSWORKS_API']}/project/#{@project[:id]}/serving/",
+              {modelName: "testModel",
+               modelPath: "hdfs:///Projects/#{@project[:projectname]}/Models/mnist/",
+               modelVersion: 1}
+          expect_json(errorCode: 200003)
+          expect_status(401)
+        end
+      end
+
+      context 'with authentication' do
+        before :all do
+          with_valid_project
+        end
+        it "should create the serving" do
+          put "#{ENV['HOPSWORKS_API']}/project/#{@project[:id]}/serving/",
+              {modelName: "testModel",
+               modelPath: "hdfs:///Projects/#{@project[:projectname]}/Models/mnist/",
+               modelVersion: 1}
+          expect_status(201)
+        end
+      end
     end
   end
 end
