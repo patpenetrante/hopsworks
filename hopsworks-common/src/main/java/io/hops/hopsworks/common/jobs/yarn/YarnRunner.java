@@ -69,6 +69,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import io.hops.hopsworks.common.yarn.YarnClientService;
+import java.lang.reflect.Field;
 import java.util.LinkedList;
 import org.apache.flink.client.deployment.ClusterDeploymentException;
 import org.apache.flink.client.deployment.ClusterSpecification;
@@ -217,6 +218,21 @@ public class YarnRunner {
     for (Map.Entry<String, String> sysProp : systemProperties.entrySet()) {
       String option = YarnRunner.escapeForShell("-D" + sysProp.getKey() + "=" + sysProp.getValue());
       javaOptions.add(option);
+    }
+  }
+  
+  
+  // TODO: Ahmad: A hack to set env variable for debugging! Must be set somewhere in glassfish?
+  public static void setEnv(String key, String value) {
+    try {
+      Map<String, String> env = System.getenv();
+      Class<?> cl = env.getClass();
+      Field field = cl.getDeclaredField("m");
+      field.setAccessible(true);
+      Map<String, String> writableEnv = (Map<String, String>) field.get(env);
+      writableEnv.put(key, value);
+    } catch (Exception e) {
+      throw new IllegalStateException("Failed to set environment variable", e);
     }
   }
 
@@ -430,14 +446,7 @@ public class YarnRunner {
 
         }
 
-        // TODO: Ahmad: Debugging only!! Remove later
-        Map<String, String> env = System.getenv();
-        for (Map.Entry<String, String> entry : env.entrySet()) {
-          logger.log(Level.INFO, "FLINK: env {0} = {1}", new Object[]{entry.getKey(), entry.getValue()});
-        }
-
-
-
+        
         // create yarn app and pass it to flink
         YarnClientApplication yarnApplication = yarnClient.createApplication();
         GetNewApplicationResponse appResponse = yarnApplication.getNewApplicationResponse();
@@ -491,7 +500,17 @@ public class YarnRunner {
         flinkCluster.addShipFiles(localShipFiles);
         
         
+        // Generating the Flink Job Graph
         
+        // TODO: Ahmad: Debugging only!! Remove later
+        
+        setEnv("HADOOP_CONF_DIR", "/srv/hops/hadoop/etc/hadoop");
+        
+        Map<String, String> env = System.getenv();
+        for (Map.Entry<String, String> entry : env.entrySet()) {
+          logger.log(Level.INFO, "FLINK: env {0} = {1}", new Object[]{entry.getKey(), entry.getValue()});
+        }
+
         
         logger.log(Level.INFO, "FLINK: Packaging the Flink program...");
         PackagedProgram packagedProgram = new PackagedProgram(localAppJarFile, classpaths, appMainClass, args);
