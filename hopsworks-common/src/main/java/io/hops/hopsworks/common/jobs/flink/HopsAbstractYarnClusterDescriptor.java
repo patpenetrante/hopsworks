@@ -117,11 +117,6 @@ import static org.apache.flink.yarn.cli.FlinkYarnSessionCli.getDynamicProperties
 
 
 
-
-
-
-
-
 public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescriptor<ApplicationId> {
 
   private static final Logger LOG = LoggerFactory.getLogger(HopsAbstractYarnClusterDescriptor.class);
@@ -168,9 +163,10 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
   
   private Path stagingDir;
   
-  public void setFs (FileSystem fs) {
-    this.hopsfs = fs;
-  }
+  private YarnClientApplication yarnApplication = null;
+
+  private GetNewApplicationResponse appResponse = null;
+
   
   public void setStagingDir (Path stagingDir) {
     this.stagingDir = stagingDir;
@@ -184,9 +180,6 @@ public abstract class HopsAbstractYarnClusterDescriptor implements ClusterDescri
     this.appResponse = appResponse;
   }
 
-  private YarnClientApplication yarnApplication = null;
-
-  private GetNewApplicationResponse appResponse = null;
 
   /**
    * Optional Jar file to include in the system class loader of all application

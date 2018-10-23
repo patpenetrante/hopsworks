@@ -324,7 +324,7 @@ public class YarnRunner {
      
       
       String[] args = {};
-// TODO (Ahmad): is this needed???
+// TODO: Ahmad: is this needed???
 //      if (amArgs != null) {
 //        if (!javaOptions.isEmpty()) {
 //          amArgs += " --kafka_params \"";
@@ -339,15 +339,14 @@ public class YarnRunner {
 
 // TODO: Ahmad: amArgs is actually the user defined job args
       args = amArgs.trim().split(" ");
-      logger.log(Level.INFO, "FLINK: amArgs = ", amArgs); 
-//
-
-
+      //logger.log(Level.INFO, "FLINK: amArgs = ", amArgs); 
       
         
       String localPathAppJarDir = null;
       try {
         // TODO: Ahmad: Check what needs to be in the classpath for flink client
+        // Now we add everything!
+        
         List<URL> classpaths = new ArrayList<>();
         
         URL otherURL = new File("/srv/hops/hadoop").toURI().toURL();
@@ -356,107 +355,110 @@ public class YarnRunner {
         classpaths.add(otherURL); 
         otherURL = new File("/srv/hops/hadoop/lib/native").toURI().toURL();
         classpaths.add(otherURL); 
+        // According to https://issues.apache.org/jira/browse/BEAM-2457
+        // we need to have the hadoop conf dir both in classpath and as environment variable!
         otherURL = new File("/srv/hops/hadoop/etc/hadoop").toURI().toURL();
         classpaths.add(otherURL); 
-
         
         // Hadoop
-        URL hadoopURL
-                = new File("/srv/hops/hadoop/share/hadoop/common/hadoop-common-2.8.2.5-SNAPSHOT.jar").toURI().toURL();
-        classpaths.add(hadoopURL);
-        File[] hadoopLibs = new File("/srv/hops/hadoop/share/hadoop/common/lib").listFiles();
+        File[] hadoopCommon = new File("/srv/hops/hadoop/share/hadoop/common").listFiles();
+        for(File f: hadoopCommon){
+          URL u = f.toURI().toURL();
+          classpaths.add(u);
+          //logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
+        }
 
+        File[] hadoopLibs = new File("/srv/hops/hadoop/share/hadoop/common/lib").listFiles();
         for(File f: hadoopLibs){
           URL u = f.toURI().toURL();
           classpaths.add(u);
-          logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
-
+          //logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
         }
         
         File[] otherLibs = new File("/srv/hops/hadoop/share/hadoop/yarn/").listFiles();
-
         for(File f: otherLibs){
           URL u = f.toURI().toURL();
           classpaths.add(u);
-          logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
-
+          //logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
         }
         
         otherLibs = new File("/srv/hops/hadoop/share/hadoop/yarn/lib").listFiles();
-
         for(File f: otherLibs){
           URL u = f.toURI().toURL();
           classpaths.add(u);
-          logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
-
+          //logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
         }
         
         otherLibs = new File("/srv/hops/hadoop/share/hadoop/tools/lib").listFiles();
-
         for(File f: otherLibs){
           URL u = f.toURI().toURL();
           classpaths.add(u);
-          logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
-
+          //logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
         }
+
         otherLibs = new File("/srv/hops/hadoop/share/hadoop/mapreduce").listFiles();
-
         for(File f: otherLibs){
           URL u = f.toURI().toURL();
           classpaths.add(u);
-          logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
-
+          //logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
         }
-        otherLibs = new File("/srv/hops/hadoop/share/hadoop/mapreduce/lib").listFiles();
 
+        otherLibs = new File("/srv/hops/hadoop/share/hadoop/mapreduce/lib").listFiles();
         for(File f: otherLibs){
           URL u = f.toURI().toURL();
           classpaths.add(u);
-          logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
-
+          //logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
         }
 
         //HDFS
-        URL hdfsURL = new File("/srv/hops/hadoop/share/hadoop/hdfs/hadoop-hdfs-2.8.2.5-SNAPSHOT.jar").toURI().toURL();
-        classpaths.add(hdfsURL);
-        
-        File[] hdfsLibs = new File("/srv/hops/hadoop/share/hadoop/hdfs/lib").listFiles();
-
+        File[] hdfsLibs = new File("/srv/hops/hadoop/share/hadoop/hdfs").listFiles();
         for(File f: hdfsLibs){
           URL u = f.toURI().toURL();
           classpaths.add(u);
-          logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
+          //logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
+        }
 
+        hdfsLibs = new File("/srv/hops/hadoop/share/hadoop/hdfs/lib").listFiles();
+        for(File f: hdfsLibs){
+          URL u = f.toURI().toURL();
+          classpaths.add(u);
+          //logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
         }
                 
         // Flink
         URL flinkURL = new File(serviceDir + "/"
             + Settings.FLINK_LOCRSC_FLINK_JAR).toURI().toURL();
         classpaths.add(flinkURL);
-        
-       
+
+        File[] flinkLibs = new File(serviceDir + "/lib").listFiles();
+        for(File f: flinkLibs){
+          URL u = f.toURI().toURL();
+          classpaths.add(u);
+          //logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
+        }
         
         //Beam
+        // TODO: Ahmad: Where to put beam jars?
+        // Or leave it to user to add to job?
         File[] beamLibs = new File(serviceDir + "/lib-beam").listFiles();
-
         for(File f: beamLibs){
           URL u = f.toURI().toURL();
           classpaths.add(u);
-          logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
-
+          //logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
         }
 
         
-        // create yarn app and pass it to flink
+        // create yarn app
         YarnClientApplication yarnApplication = yarnClient.createApplication();
         GetNewApplicationResponse appResponse = yarnApplication.getNewApplicationResponse();
+        // and pass it to flink
         flinkCluster.setYarnApplication(yarnApplication);
         flinkCluster.setAppResponse(appResponse);
+        
         appId = appResponse.getApplicationId();
         logger.log(Level.INFO,
           "FLINK: Created YarnApplication with appId = {0},", appId.toString());
-        logger.log(Level.INFO,
-          "FLINK: localResourcesBasePath = {0},", localResourcesBasePath);
+        // Set the staging dir
         flinkCluster.setStagingDir(new Path(localResourcesBasePath));
         
         
@@ -486,15 +488,17 @@ public class YarnRunner {
 
         
         // Copying user shipFiles from HDFS to local
-        // then adding local copy to class path
+        // then adding local copy to 1) FlinkClient classpath and 2) ClusterDescriptor ship files
         List<File> localShipFiles = new LinkedList<>();
         for(Path shipFile : flinkShipFiles) {
           String localPath = localPathAppJarDir + "/" + shipFile.getName();
           logger.log(Level.INFO, "FLINK: Copying user file {0} to {1}", new Object[] {shipFile, localPath});
           fs.copyToLocalFile(shipFile, new Path(localPath));
           File localFile = new File(localPath);
-          localShipFiles.add(localFile);
+          // 1) add to class path
           classpaths.add(localFile.toURI().toURL());
+          // 2) add to ShipFiles
+          localShipFiles.add(localFile);
         }
         // Flink will ship the files
         flinkCluster.addShipFiles(localShipFiles);
@@ -502,23 +506,21 @@ public class YarnRunner {
         
         // Generating the Flink Job Graph
         
-        // TODO: Ahmad: Debugging only!! Remove later
-        
+        // TODO: Ahmad: Testing only!! Change later to be set in glassfish!!
         setEnv("HADOOP_CONF_DIR", "/srv/hops/hadoop/etc/hadoop");
         
+        // TODO: Ahmad: Debugging! Remove after setting env properly
         Map<String, String> env = System.getenv();
         for (Map.Entry<String, String> entry : env.entrySet()) {
           logger.log(Level.INFO, "FLINK: env {0} = {1}", new Object[]{entry.getKey(), entry.getValue()});
         }
 
-        
         logger.log(Level.INFO, "FLINK: Packaging the Flink program...");
         PackagedProgram packagedProgram = new PackagedProgram(localAppJarFile, classpaths, appMainClass, args);
         JobGraph jobGraph = PackagedProgramUtils.createJobGraph(packagedProgram,
                 flinkCluster.getFlinkConfiguration(), parallelism);
 
-        
-        
+                
         Map<String, String> jobSystemProperties = new HashMap<>(3);
         // When Hops RPC TLS is enabled, Yarn will take care of application certificate
         // Certificates are materialized locally so DFSClient can be set to null
@@ -542,8 +544,9 @@ public class YarnRunner {
         appId = clusterClient.getClusterId();
         logger.log(Level.INFO, "FLINK: Finished deploying cluster with ID {0}", appId.toString());
         
-        
+        // TODO: Ahmad: Is this needed?
         fillInAppid(appId.toString());
+        
         monitor = new YarnMonitor(appId, newYarnClientWrapper, ycs);
  
         
@@ -1286,11 +1289,6 @@ public class YarnRunner {
         this.services = services;
         conf = services.getSettings().getConfiguration();
         this.serviceDir = serviceDir;
-        //if (jobType == JobType.FLINK) {
-//TOCHECK: Ahmad          flinkCluster.setConf(conf);
-        /*check*/
-        //    flinkCluster.setConfigurationDirectory(services.getSettings().getYarnConfDir());
-        //}
       } catch (IllegalStateException e) {
         throw new IllegalStateException("Failed to load configuration", e);
       }

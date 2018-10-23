@@ -440,12 +440,12 @@ public class FlinkYarnRunnerBuilder {
 
     List<File> flinkLib = Arrays.asList(new File(flinkDir+"/lib/").listFiles());
     
-    StringBuilder b = new StringBuilder(); // only for logging
-    flinkLib.forEach(b::append);
-    LOGGER.log(Level.INFO, "FLINK: Adding Flink lib to ship! {0}", b);
+    // only for debugging
+    // StringBuilder b = new StringBuilder();
+    // flinkLib.forEach(b::append);
+    // LOGGER.log(Level.INFO, "FLINK: Adding Flink lib to ship! {0}", b);
 
     cluster.addShipFiles(flinkLib);
-    //cluster.addLibFolderToShipFiles(flinkLib);
     addSystemProperty(Settings.HOPSWORKS_REST_ENDPOINT_PROPERTY, serviceProps.getRestEndpoint());
     if (serviceProps.getKafka() != null) {
       
@@ -457,11 +457,13 @@ public class FlinkYarnRunnerBuilder {
       }
     }
     if (!sysProps.isEmpty()) {
+      // TODO: Ahmad: But we have a public void setDynamicPropertiesEncoded()! Why overwrite it here without checking?
       dynamicPropertiesEncoded = new StringBuilder();
       for (String s : sysProps.keySet()) {
         String option = YarnRunner.escapeForShell("-D" + s + "=" + sysProps.get(s));
         builder.addJavaOption(option);
- //TOCHECK: Ahmad       cluster.addHopsworksParam(option);
+        //TODO: Ahmad: Check
+        // cluster.addHopsworksParam(option);
         dynamicPropertiesEncoded.append(s).append("=").append(sysProps.get(s)).
                 append("@@");
       }
@@ -496,7 +498,7 @@ public class FlinkYarnRunnerBuilder {
     }
     cluster.setName(name);
     //Set up command
-    // TODO (Ahmad): rename builder.amArgs to builder.jobArgs??
+    // TODO: Ahmad: rename builder.amArgs to builder.jobArgs??
     StringBuilder amargs = new StringBuilder("");
     //Pass job arguments
     for (String s : jobArgs) {
