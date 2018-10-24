@@ -440,12 +440,12 @@ public class YarnRunner {
         //Beam
         // TODO: Ahmad: Where to put beam jars?
         // Or leave it to user to add to job?
-        File[] beamLibs = new File(serviceDir + "/lib-beam").listFiles();
-        for(File f: beamLibs){
-          URL u = f.toURI().toURL();
-          classpaths.add(u);
+ //       File[] beamLibs = new File(serviceDir + "/lib-beam").listFiles();
+ //       for(File f: beamLibs){
+ //         URL u = f.toURI().toURL();
+ //         classpaths.add(u);
           //logger.log(Level.INFO, "FLINK: Adding to class path: {0} ", u);
-        }
+ //       }
 
         
         // create yarn app
@@ -545,7 +545,7 @@ public class YarnRunner {
         logger.log(Level.INFO, "FLINK: Finished deploying cluster with ID {0}", appId.toString());
         
         // TODO: Ahmad: Is this needed?
-        fillInAppid(appId.toString());
+        //fillInAppid(appId.toString());
         
         monitor = new YarnMonitor(appId, newYarnClientWrapper, ycs);
  
