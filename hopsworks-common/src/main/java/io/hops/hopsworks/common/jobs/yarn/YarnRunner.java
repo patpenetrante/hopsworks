@@ -338,7 +338,9 @@ public class YarnRunner {
 //      }
 
 // TODO: Ahmad: amArgs is actually the user defined job args
-      args = amArgs.trim().split(" ");
+      if(amArgs != null) {
+        args = amArgs.trim().split(" ");
+      }
       //logger.log(Level.INFO, "FLINK: amArgs = ", amArgs); 
       
         
