@@ -17,6 +17,8 @@
 
 package io.hops.hopsworks.api.serving;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import io.hops.hopsworks.common.dao.kafka.TopicDTO;
 import io.hops.hopsworks.common.dao.serving.TfServing;
 import io.hops.hopsworks.common.serving.tf.TfServingStatusEnum;
 import io.hops.hopsworks.common.dao.user.Users;
@@ -43,9 +45,16 @@ public class TfServingView implements Serializable {
   private Integer requestedInstances;
   private Integer nodePort;
   private Date created;
+  private Boolean batchingEnabled;
+
+  // TODO(Fabio): use expansions here
   private String creator;
+
   @XmlElement
   private TfServingStatusEnum status;
+
+  // TODO(Fabio): use expansions here
+  private TopicDTO kafkaTopicDTO;
 
   public TfServingView() { }
 
@@ -59,6 +68,8 @@ public class TfServingView implements Serializable {
     this.nodePort = tfServingWrapper.getNodePort();
     this.created = tfServingWrapper.getTfServing().getCreated();
     this.status = tfServingWrapper.getStatus();
+    this.kafkaTopicDTO = tfServingWrapper.getKafkaTopicDTO();
+    this.batchingEnabled = tfServingWrapper.getTfServing().isBatchingEnabled();
 
     Users user = tfServingWrapper.getTfServing().getCreator();
     this.creator = user.getFname() + " " + user.getLname();
@@ -150,7 +161,30 @@ public class TfServingView implements Serializable {
     return status;
   }
 
-  public TfServing getTfServingDAO() {
-    return new TfServing(id, modelName, modelPath, modelVersion, requestedInstances);
+  @ApiModelProperty(value = "Is request batching enabled")
+  public Boolean isBatchingEnabled() {
+    return batchingEnabled;
+  }
+
+  public void setBatchingEnabled(Boolean batchingEnabled) {
+    this.batchingEnabled = batchingEnabled;
+  }
+
+  public TopicDTO getKafkaTopicDTO() {
+    return kafkaTopicDTO;
+  }
+
+  public void setKafkaTopicDTO(TopicDTO kafkaTopicDTO) {
+    this.kafkaTopicDTO = kafkaTopicDTO;
+  }
+
+  @JsonIgnore
+  public TfServingWrapper getTfServingWrapper() {
+
+    TfServingWrapper tfServingWrapper = new TfServingWrapper(
+        new TfServing(id, modelName, modelPath, modelVersion, requestedInstances, batchingEnabled));
+    tfServingWrapper.setKafkaTopicDTO(kafkaTopicDTO);
+
+    return tfServingWrapper;
   }
 }

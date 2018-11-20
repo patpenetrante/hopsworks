@@ -344,6 +344,10 @@ angular.module('hopsWorksApp')
             };
             startPolling();
 
+            $scope.$on('$destroy', function () {
+              $interval.cancel(self.poller);
+            });
+
             self.sliderVisible = false;
 
             self.setInitExecs = function() {
@@ -533,9 +537,8 @@ angular.module('hopsWorksApp')
                         self.sliderOptions.max = self.val.dynamicMaxExecutors;
                         self.toggleValue = true;
                         if (self.val.project.name.startsWith("demo_deep_learning")) {
-                            self.experiment();
                             self.val.mode = "experiment";
-                            self.advanced = true;
+                            self.experiment();
                             //Activate anaconda
                             PythonDepsService.enabled(self.projectId).then(
                                 function(success) {},
@@ -556,7 +559,7 @@ angular.module('hopsWorksApp')
                                 });
 
                         } else {
-                            self.val.mode = "sparkDynamic";
+                            self.val.mode = "sparkdynamic";
                         }
                         if (self.val.logLevel === "FINE") {
                             self.logLevelSelected = self.log_levels[0];

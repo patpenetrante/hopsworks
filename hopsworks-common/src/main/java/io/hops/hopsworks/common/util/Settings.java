@@ -91,6 +91,7 @@ import java.util.regex.Pattern;
 
 import static io.hops.hopsworks.common.dao.kafka.KafkaFacade.DLIMITER;
 import static io.hops.hopsworks.common.dao.kafka.KafkaFacade.SLASH_SEPARATOR;
+import io.hops.hopsworks.common.dao.project.Project;
 
 @Singleton
 @ConcurrencyManagement(ConcurrencyManagementType.BEAN)
@@ -101,6 +102,10 @@ public class Settings implements Serializable {
 
   @EJB
   private UserFacade userFacade;
+  @EJB
+  private ProjectUtils projectUtils;
+  @EJB
+  private OSProcessExecutor osProcessExecutor;
 
   @PersistenceContext(unitName = "kthfsPU")
   private EntityManager em;
@@ -131,6 +136,7 @@ public class Settings implements Serializable {
   /**
    * Global Variables taken from the DB
    */
+  private static final String VARIABLE_PYPI_REST_ENDPOINT = "pypi_rest_endpoint";
   private static final String VARIABLE_PYTHON_KERNEL = "python_kernel";
   private static final String VARIABLE_HADOOP_VERSION = "hadoop_version";
   private static final String VARIABLE_JAVA_HOME = "JAVA_HOME";
@@ -145,6 +151,7 @@ public class Settings implements Serializable {
   private static final String VARIABLE_RM_PORT = "rm_port";
   private static final String VARIABLE_LOGSTASH_IP = "logstash_ip";
   private static final String VARIABLE_LOGSTASH_PORT = "logstash_port";
+  private static final String VARIABLE_LOGSTASH_PORT_SERVING = "logstash_port_serving";
   private static final String VARIABLE_OOZIE_IP = "oozie_ip";
   private static final String VARIABLE_SPARK_HISTORY_SERVER_IP
       = "spark_history_server_ip";
@@ -260,6 +267,7 @@ public class Settings implements Serializable {
   private static final String VARIABLE_TEZ_VERSION = "tez_version";
   private static final String VARIABLE_SLIDER_VERSION = "slider_version";
   private static final String VARIABLE_SPARK_VERSION = "spark_version";
+  private static final String VARIABLE_PY4J_ARCHIVE = "py4j_version";
   private static final String VARIABLE_FLINK_VERSION = "flink_version";
   private static final String VARIABLE_EPIPE_VERSION = "epipe_version";
   private static final String VARIABLE_DELA_VERSION = "dela_version";
@@ -291,6 +299,12 @@ public class Settings implements Serializable {
   private static final String VARIABLE_KUBE_CA_PASSWORD = "kube_ca_password";
   private static final String VARIABLE_KUBE_REGISTRY = "kube_registry";
   private static final String VARIABLE_KUBE_MAX_SERVING = "kube_max_serving_instances";
+  
+    // JWT Variables
+  private static final String VARIABLE_JWT_SIGNATURE_ALGORITHM = "jwt_signature_algorithm";
+  private static final String VARIABLE_JWT_LIFETIME_MS = "jwt_lifetime_ms";
+  private static final String VARIABLE_JWT_EXP_LEEWAY_SEC = "jwt_exp_leeway_sec";
+  private static final String VARIABLE_JWT_SIGNING_KEY_NAME = "jwt_signing_key_name";
 
 
   private String setVar(String varName, String defaultValue) {
@@ -418,6 +432,7 @@ public class Settings implements Serializable {
       YARN_SUPERUSER = setVar(VARIABLE_YARN_SUPERUSER, YARN_SUPERUSER);
       SPARK_USER = setVar(VARIABLE_SPARK_USER, SPARK_USER);
       SPARK_DIR = setDirVar(VARIABLE_SPARK_DIR, SPARK_DIR);
+      PY4J_ARCHIVE = setVar(VARIABLE_PY4J_ARCHIVE, PY4J_ARCHIVE);
       FLINK_USER = setVar(VARIABLE_FLINK_USER, FLINK_USER);
       FLINK_DIR = setDirVar(VARIABLE_FLINK_DIR, FLINK_DIR);
       STAGING_DIR = setDirVar(VARIABLE_STAGING_DIR, STAGING_DIR);
@@ -458,6 +473,7 @@ public class Settings implements Serializable {
       RM_PORT = setIntVar(VARIABLE_RM_PORT, RM_PORT);
       LOGSTASH_IP = setIpVar(VARIABLE_LOGSTASH_IP, LOGSTASH_IP);
       LOGSTASH_PORT = setIntVar(VARIABLE_LOGSTASH_PORT, LOGSTASH_PORT);
+      LOGSTASH_PORT_SERVING = setIntVar(VARIABLE_LOGSTASH_PORT_SERVING, LOGSTASH_PORT_SERVING);
       JHS_IP = setIpVar(VARIABLE_JHS_IP, JHS_IP);
       LIVY_IP = setIpVar(VARIABLE_LIVY_IP, LIVY_IP);
       LIVY_ZEPPELIN_SESSION_TIMEOUT = setVar(VARIABLE_LIVY_ZEPPELIN_SESSION_TIMEOUT, LIVY_ZEPPELIN_SESSION_TIMEOUT);
@@ -475,9 +491,9 @@ public class Settings implements Serializable {
       KAFKA_MAX_NUM_TOPICS = setIntVar(VARIABLE_KAFKA_MAX_NUM_TOPICS, KAFKA_MAX_NUM_TOPICS);
       KAFKA_USER = setVar(VARIABLE_KAFKA_USER, KAFKA_USER);
       KAFKA_DIR = setDirVar(VARIABLE_KAFKA_DIR, KAFKA_DIR);
-      KAFKA_DEFAULT_NUM_PARTITIONS = setDirVar(VARIABLE_KAFKA_NUM_PARTITIONS,
+      KAFKA_DEFAULT_NUM_PARTITIONS = setIntVar(VARIABLE_KAFKA_NUM_PARTITIONS,
           KAFKA_DEFAULT_NUM_PARTITIONS);
-      KAFKA_DEFAULT_NUM_REPLICAS = setDirVar(VARIABLE_KAFKA_NUM_REPLICAS,
+      KAFKA_DEFAULT_NUM_REPLICAS = setIntVar(VARIABLE_KAFKA_NUM_REPLICAS,
           KAFKA_DEFAULT_NUM_REPLICAS);
       YARN_DEFAULT_QUOTA = setIntVar(VARIABLE_YARN_DEFAULT_QUOTA,
           YARN_DEFAULT_QUOTA);
@@ -557,7 +573,8 @@ public class Settings implements Serializable {
       CUDA_VERSION = setStrVar(VARIABLE_CUDA_VERSION, CUDA_VERSION);
       HOPSWORKS_VERSION = setStrVar(VARIABLE_HOPSWORKS_VERSION, HOPSWORKS_VERSION);
       HOPSWORKS_REST_LOG_LEVEL = setLogLevelVar(VARIABLE_HOPSWORKS_REST_LOG_LEVEL, HOPSWORKS_REST_LOG_LEVEL);
-      
+
+      PYPI_REST_ENDPOINT = setStrVar(VARIABLE_PYPI_REST_ENDPOINT, PYPI_REST_ENDPOINT);
       PROVIDED_PYTHON_LIBRARY_NAMES = toSetFromCsv(
           setStrVar(VARIABLE_PROVIDED_PYTHON_LIBRARY_NAMES, DEFAULT_PROVIDED_PYTHON_LIBRARY_NAMES),",");
       PREINSTALLED_PYTHON_LIBRARY_NAMES = toSetFromCsv(
@@ -581,6 +598,10 @@ public class Settings implements Serializable {
       KUBE_REGISTRY = setStrVar(VARIABLE_KUBE_REGISTRY, KUBE_REGISTRY);
       KUBE_MAX_SERVING_INSTANCES = setIntVar(VARIABLE_KUBE_MAX_SERVING, KUBE_MAX_SERVING_INSTANCES);
 
+      JWT_SIGNATURE_ALGORITHM = setStrVar(VARIABLE_JWT_SIGNATURE_ALGORITHM, JWT_SIGNATURE_ALGORITHM);
+      JWT_LIFETIME_MS = setLongVar(VARIABLE_JWT_LIFETIME_MS, JWT_LIFETIME_MS);
+      JWT_EXP_LEEWAY_SEC = setIntVar(VARIABLE_JWT_EXP_LEEWAY_SEC, JWT_EXP_LEEWAY_SEC);
+      JWT_SIGNING_KEY_NAME = setStrVar(VARIABLE_JWT_SIGNING_KEY_NAME, JWT_SIGNING_KEY_NAME);
       cached = true;
     }
   }
@@ -726,6 +747,7 @@ public class Settings implements Serializable {
   public static final String SPARK_EXECUTORENV_PYSPARK_PYTHON = "spark.executorEnv."+SPARK_PYSPARK_PYTHON ;
   //TFSPARK properties
   public static final String SPARK_TF_GPUS_ENV = "spark.executor.gpus";
+  public static final String SPARK_TENSORFLOW_APPLICATION = "spark.tensorflow.application";
 
   //Spark log4j and metrics properties
   public static final String SPARK_LOG4J_CONFIG = "log4j.configuration";
@@ -746,8 +768,17 @@ public class Settings implements Serializable {
   public static final String SPARK_PY_MAINCLASS
       = "org.apache.spark.deploy.PythonRunner";
   public static final String PYSPARK_ZIP = "pyspark.zip";
-  public static final String PYSPARK_PY4J = "py4j-0.10.6-src.zip";
 
+  //Hive config
+  public static final String HIVE_SITE = "hive-site.xml";
+
+  private String PY4J_ARCHIVE = "py4j-0.10.7-src.zip";
+  
+  public synchronized String getPy4JArchive() {
+    checkCache();
+    return PY4J_ARCHIVE;
+  }
+  
   public synchronized String getSparkDir() {
     checkCache();
     return SPARK_DIR;
@@ -1189,6 +1220,50 @@ public class Settings implements Serializable {
   private String sparkDefaultClasspath(String sparkDir) {
     return sparkDir + "/lib/*";
   }
+  
+  private static final String HADOOP_GLASSPATH_GLOB_ENV_VAR_KEY = "HADOOP_GLOB";
+  private volatile String HADOOP_CLASSPATH_GLOB = null;
+  
+  public String getHadoopClasspathGlob() throws IOException {
+    if (HADOOP_CLASSPATH_GLOB == null) {
+      synchronized (Settings.class) {
+        if (HADOOP_CLASSPATH_GLOB == null) {
+          String classpathGlob = System.getenv(HADOOP_GLASSPATH_GLOB_ENV_VAR_KEY);
+          if (classpathGlob == null) {
+            LOGGER.log(Level.WARNING, HADOOP_GLASSPATH_GLOB_ENV_VAR_KEY + " environment variable is not set. " +
+                "Launching a subprocess to discover it");
+            String bin = Paths.get(getHadoopSymbolicLinkDir(), "bin", "hadoop").toString();
+            ProcessDescriptor processDescriptor = new ProcessDescriptor.Builder()
+                .addCommand(bin)
+                .addCommand("classpath")
+                .addCommand("--glob")
+                .build();
+            ProcessResult result = osProcessExecutor.execute(processDescriptor);
+            if (result.getExitCode() != 0) {
+              throw new IOException("Could not get Hadoop classpath, exit code " + result.getExitCode()
+                + " Error: " + result.getStderr());
+            }
+            classpathGlob = result.getStdout();
+          }
+          //Now we must remove the yarn shuffle library as it creates issues for
+          //Zeppelin Spark Interpreter
+          StringBuilder classpath = new StringBuilder();
+  
+          for (String path : classpathGlob.split(File.pathSeparator)) {
+            if (!path.contains("yarn") && !path.contains("jersey") && !path.contains("servlet")) {
+              classpath.append(path).append(File.pathSeparator);
+            }
+          }
+          if (classpath.length() > 0) {
+            HADOOP_CLASSPATH_GLOB = classpath.toString().substring(0, classpath.length() - 1);
+          } else {
+            throw new IOException("Hadoop classpath appears to be empty");
+          }
+        }
+      }
+    }
+    return HADOOP_CLASSPATH_GLOB;
+  }
 
   /**
    * Constructs the path to the marker file of a streaming job that uses
@@ -1354,10 +1429,15 @@ public class Settings implements Serializable {
 
   // Resource Manager Port 
   private int LOGSTASH_PORT = 8088;
-
   public synchronized Integer getLogstashPort() {
     checkCache();
     return LOGSTASH_PORT;
+  }
+
+  private int LOGSTASH_PORT_SERVING = 5045;
+  public synchronized Integer getLogstashPortServing() {
+    checkCache();
+    return LOGSTASH_PORT_SERVING;
   }
 
   // Livy Server`
@@ -1518,9 +1598,9 @@ public class Settings implements Serializable {
    * @param projectName name
    * @return conda dir
    */
-  public String getAnacondaProjectDir(String projectName) {
-    return getAnacondaDir() + File.separator + "envs" + File.separator
-        + projectName;
+  public String getAnacondaProjectDir(Project project) {
+    String condaEnv = projectUtils.getCurrentCondaEnvironment(project);
+    return getAnacondaDir() + File.separator + "envs" + File.separator + condaEnv;
   }
 
   private String ANACONDA_ENV = "kagent";
@@ -1599,15 +1679,15 @@ public class Settings implements Serializable {
     return HOPSWORKS_DEFAULT_SSL_MASTER_PASSWORD;
   }
 
-  private String KAFKA_DEFAULT_NUM_PARTITIONS = "2";
-  private String KAFKA_DEFAULT_NUM_REPLICAS = "1";
+  private Integer KAFKA_DEFAULT_NUM_PARTITIONS = 2;
+  private Integer KAFKA_DEFAULT_NUM_REPLICAS = 1;
 
-  public synchronized String getKafkaDefaultNumPartitions() {
+  public synchronized Integer getKafkaDefaultNumPartitions() {
     checkCache();
     return KAFKA_DEFAULT_NUM_PARTITIONS;
   }
 
-  public synchronized String getKafkaDefaultNumReplicas() {
+  public synchronized Integer getKafkaDefaultNumReplicas() {
     checkCache();
     return KAFKA_DEFAULT_NUM_REPLICAS;
   }
@@ -1670,14 +1750,7 @@ public class Settings implements Serializable {
   public static final String META_DATA_FIELDS = META_DATA_NESTED_FIELD + ".*";
 
   //Filename conventions
-  public static final String PROJECT_DISALLOWED_CHARS
-      = " -/\\?*:|'\"<>%()&;#öäåÖÅÄàáéèâîïüÜ@${}[]+~^$`";
-  public static final String PRINT_PROJECT_DISALLOWED_CHARS = "__, -, space, "
-      + "/, \\, ?, *, :, |, ', \", <, >, %, (, ), &, ;, #,ö,ä,å,Ö,Å,Ä,à,á,é,è,â,î,ï,ü,Ü,@,$,{,},[,],+,~,^";
   public static final String FILENAME_DISALLOWED_CHARS = " /\\?*:|'\"<>%()&;#öäåÖÅÄàáéèâîïüÜ@${}[]+~^$`";
-  public static final String SUBDIR_DISALLOWED_CHARS = "/\\?*:|'\"<>%()&;#öäåÖÅÄàáéèâîïüÜ@${}[]+~^$`";
-  public static final String PRINT_FILENAME_DISALLOWED_CHARS
-      = "__, space, /, \\, ?, *, :, |, ', \", <, >, %, (, ), &, ;, #,ö,ä,å,Ö,Å,Ä,à,á,é,è,â,î,ï,ü,Ü,@,$,{,},[,],+,~,^";
   public static final String SHARED_FILE_SEPARATOR = "::";
   public static final String DOUBLE_UNDERSCORE = "__";
 
@@ -1745,14 +1818,18 @@ public class Settings implements Serializable {
   public static final String FILE_PREVIEW_MODE_TAIL = "tail";
   
   //Elastic log index pattern
-  public static final String ELASTIC_LOG_INDEX_REGEX = ".*_logs-\\d{4}.\\d{2}.\\d{2}";
+  public static final String ELASTIC_LOGS_INDEX = "logs";
+  public static final String ELASTIC_LOGS_INDEX_PATTERN = "_" +Settings.ELASTIC_LOGS_INDEX+ "-*";
+  public static final String ELASTIC_SERVING_INDEX = "serving";
+  public static final String ELASTIC_SERVING_INDEX_PATTERN = "_" + ELASTIC_SERVING_INDEX + "-*";
   public static final String ELASTIC_EXPERIMENTS_INDEX = "experiments";
   public static final String ELASTIC_SAVED_OBJECTS = "saved_objects";
   public static final String ELASTIC_VISUALIZATION = "visualization";
   public static final String ELASTIC_SAVED_SEARCH = "search";
   public static final String ELASTIC_DASHBOARD = "dashboard";
   public static final String ELASTIC_INDEX_PATTERN = "index-pattern";
-  
+  public static final String ELASTIC_LOG_INDEX_REGEX = ".*_" + ELASTIC_LOGS_INDEX + "-\\d{4}.\\d{2}.\\d{2}";
+  public static final String ELASTIC_SERVING_INDEX_REGEX = ".*_" + ELASTIC_SERVING_INDEX+ "-\\d{4}.\\d{2}.\\d{2}";
   
   public String getHopsworksTmpCertDir() {
     return Paths.get(getCertsDir(), "transient").toString();
@@ -2133,6 +2210,13 @@ public class Settings implements Serializable {
   public synchronized boolean isPythonKernelEnabled() {
     checkCache();
     return PYTHON_KERNEL;
+  }
+
+  private String PYPI_REST_ENDPOINT = "https://pypi.org/pypi/{package}/json";
+
+  public synchronized String getPyPiRESTEndpoint() {
+    checkCache();
+    return PYPI_REST_ENDPOINT;
   }
 
   private String HOPSUTIL_VERSION = "0.3.0";
@@ -2677,9 +2761,9 @@ public class Settings implements Serializable {
     return applicationCertificateValidityPeriod;
   }
 
-  // TensorBoard kill rotation interval in milliseconds
+  // TensorBoard kill rotation interval in milliseconds (should be lower than the TensorBoardKillTimer)
   private static final String TENSORBOARD_MAX_LAST_ACCESSED = "tensorboard_max_last_accessed";
-  private int tensorBoardMaxLastAccessed = 1800000;
+  private int tensorBoardMaxLastAccessed = 1140000;
 
   public synchronized int getTensorBoardMaxLastAccessed() {
     checkCache();
@@ -3020,5 +3104,34 @@ public class Settings implements Serializable {
     public String getDescription() {
       return description;
     }
+  }
+  
+  private String JWT_SIGNATURE_ALGORITHM = "HS512";
+  private long JWT_LIFETIME_MS = 1800000l;
+  private int JWT_EXP_LEEWAY_SEC = 900;
+  private String JWT_SIGNING_KEY_NAME = "apiKey";
+
+  public synchronized String getJWTSignatureAlg() {
+    checkCache();
+    return JWT_SIGNATURE_ALGORITHM;
+  }
+  
+  public synchronized long getJWTLifetimeMs() {
+    checkCache();
+    return JWT_LIFETIME_MS;
+  }
+  
+  public synchronized int getJWTExpLeewaySec() {
+    checkCache();
+    return JWT_EXP_LEEWAY_SEC;
+  }
+  
+  public synchronized String getJWTSigningKeyName() {
+    checkCache();
+    return JWT_SIGNING_KEY_NAME;
+  }
+
+  public String getHiveSiteSparkHdfsPath() {
+    return "hdfs:///user/" + getSparkUser() + "/hive-site.xml";
   }
 }

@@ -13,43 +13,54 @@
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
+package io.hops.hopsworks.api.jwt;
 
-package io.hops.hopsworks.api.util;
-
+import java.util.Date;
 import javax.xml.bind.annotation.XmlRootElement;
 
 @XmlRootElement
-public class ServingConfDTO {
+public class JsonWebTokenDTO {
 
-  private Integer maxNumInstances;
+  private String token;
+  private Date expiresAt;
+  private Date nbf;
 
-  public ServingConfDTO () {
+  public JsonWebTokenDTO() {
   }
 
-  public ServingConfDTO(Integer maxNumInstances) {
-    this.maxNumInstances = maxNumInstances;
+  public JsonWebTokenDTO(String token, Date expiresAt, Date nbf) {
+    this.token = token;
+    this.expiresAt = expiresAt;
+    this.nbf = nbf;
   }
 
-  public Integer getMaxNumInstances() {
-    return maxNumInstances;
+  public String getToken() {
+    return token;
   }
 
-  public void setMaxNumInstances(Integer maxNumInstances) {
-    this.maxNumInstances = maxNumInstances;
+  public void setToken(String token) {
+    this.token = token;
+  }
+
+  public Date getExpiresAt() {
+    return expiresAt;
+  }
+
+  public void setExpiresAt(Date expiresAt) {
+    this.expiresAt = expiresAt;
+  }
+
+  public Date getNbf() {
+    return nbf;
+  }
+
+  public void setNbf(Date nbf) {
+    this.nbf = nbf;
   }
 
   @Override
-  public boolean equals(Object o) {
-    if (this == o) return true;
-    if (o == null || getClass() != o.getClass()) return false;
-
-    ServingConfDTO that = (ServingConfDTO) o;
-
-    return maxNumInstances != null ? maxNumInstances.equals(that.maxNumInstances) : that.maxNumInstances == null;
+  public String toString() {
+    return "JsonWebTokenDTO{" + "token=" + token + ", expiresAt=" + expiresAt + ", nbf=" + nbf + '}';
   }
 
-  @Override
-  public int hashCode() {
-    return maxNumInstances != null ? maxNumInstances.hashCode() : 0;
-  }
 }

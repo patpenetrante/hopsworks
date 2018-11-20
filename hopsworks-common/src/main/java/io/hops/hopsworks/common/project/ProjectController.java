@@ -104,10 +104,12 @@ import io.hops.hopsworks.common.security.CertificateMaterializer;
 import io.hops.hopsworks.common.security.CertificatesController;
 import io.hops.hopsworks.common.security.CertificatesMgmService;
 import io.hops.hopsworks.common.security.OpensslOperations;
+import io.hops.hopsworks.common.serving.inference.logger.KafkaInferenceLogger;
 import io.hops.hopsworks.common.serving.tf.TfServingController;
 import io.hops.hopsworks.common.serving.tf.TfServingException;
 import io.hops.hopsworks.common.user.UsersController;
 import io.hops.hopsworks.common.util.HopsUtils;
+import io.hops.hopsworks.common.util.ProjectUtils;
 import io.hops.hopsworks.common.util.Settings;
 import io.hops.hopsworks.common.yarn.YarnClientService;
 import io.hops.hopsworks.common.yarn.YarnClientWrapper;
@@ -196,8 +198,6 @@ public class ProjectController {
   @EJB
   private DatasetFacade datasetFacade;
   @EJB
-  private HdfsUsersController hdfsUsersBean;
-  @EJB
   private Settings settings;
   @EJB
   private CertsFacade userCertsFacade;
@@ -246,7 +246,8 @@ public class ProjectController {
   @Inject
   @Any
   private Instance<ProjectHandler> projectHandlers;
-
+  @EJB
+  private ProjectUtils projectUtils;
 
   /**
    * Creates a new project(project), the related DIR, the different services in
@@ -272,7 +273,7 @@ public class ProjectController {
     
     //check that the project name is ok
     String projectName = projectDTO.getProjectName();
-    FolderNameValidator.isValidProjectName(projectName, false);
+    FolderNameValidator.isValidProjectName(projectUtils, projectName);
 
     List<ProjectServiceEnum> projectServices = new ArrayList<>();
     if (projectDTO.getServices() != null) {
@@ -329,19 +330,20 @@ public class ProjectController {
       // User's certificates should be created before making any call to
       // Hadoop clients. Otherwise the client will fail if RPC TLS is enabled
       // This is an async call
-      Future<CertificatesController.CertsResult> certsGenerationFuture = null;
+      List<Future<?>> projectCreationFutures = new ArrayList<>();
       try {
-        certsGenerationFuture = certificatesController.generateCertificates(project, owner, true);
+        projectCreationFutures.add(certificatesController
+            .generateCertificates(project, owner, true));
       } catch (Exception ex) {
-        cleanup(project, sessionId, certsGenerationFuture);
+        cleanup(project, sessionId, projectCreationFutures);
         throw new HopsSecurityException(RESTCodes.SecurityErrorCode.CERT_CREATION_ERROR, Level.SEVERE,
           "project: " + project.getName() +
             "owner: " + owner.getUsername(), ex.getMessage(), ex);
       }
 
-      String username = hdfsUsersBean.getHdfsUserName(project, owner);
+      String username = hdfsUsersController.getHdfsUserName(project, owner);
       if (username == null || username.isEmpty()) {
-        cleanup(project, sessionId, certsGenerationFuture);
+        cleanup(project, sessionId, projectCreationFutures);
         throw new UserException(RESTCodes.UserErrorCode.USER_WAS_NOT_FOUND, Level.SEVERE,
           "project: " + project.getName() + "owner: " + owner.getUsername());
       }
@@ -353,7 +355,7 @@ public class ProjectController {
       try {
         mkProjectDIR(projectName, dfso);
       } catch (IOException | EJBException ex) {
-        cleanup(project, sessionId, certsGenerationFuture);
+        cleanup(project, sessionId, projectCreationFutures);
         throw new ProjectException(RESTCodes.ProjectErrorCode.PROJECT_FOLDER_NOT_CREATED, Level.SEVERE,
           "project: " + projectName, ex.getMessage(), ex);
       }
@@ -362,7 +364,7 @@ public class ProjectController {
       try {
         setProjectInode(project, dfso);
       } catch (IOException | EJBException ex) {
-        cleanup(project, sessionId, certsGenerationFuture);
+        cleanup(project, sessionId, projectCreationFutures);
         throw new ProjectException(RESTCodes.ProjectErrorCode.PROJECT_INODE_CREATION_ERROR,
           Level.SEVERE, "project: " + projectName, ex.getMessage(), ex);
       }
@@ -373,17 +375,17 @@ public class ProjectController {
         setProjectOwnerAndQuotas(project, settings.getHdfsDefaultQuotaInMBs(),
             dfso, owner);
       } catch (IOException | EJBException ex) {
-        cleanup(project, sessionId, certsGenerationFuture);
+        cleanup(project, sessionId, projectCreationFutures);
         throw new ProjectException(RESTCodes.ProjectErrorCode.QUOTA_ERROR, Level.SEVERE,
           "project: " + project.getName(), ex.getMessage(), ex);
       }
       LOGGER.log(Level.FINE, "PROJECT CREATION TIME. Step 7 (quotas): {0}", System.currentTimeMillis() - startTime);
 
       try {
-        hdfsUsersBean.addProjectFolderOwner(project, dfso);
+        hdfsUsersController.addProjectFolderOwner(project, dfso);
         createProjectLogResources(owner, project, dfso);
       } catch (IOException | EJBException ex) {
-        cleanup(project, sessionId, certsGenerationFuture);
+        cleanup(project, sessionId, projectCreationFutures);
         throw new ProjectException(RESTCodes.ProjectErrorCode.PROJECT_SET_PERMISSIONS_ERROR, Level.SEVERE,
           "project: " + projectName, ex.getMessage(), ex);
       }
@@ -394,9 +396,9 @@ public class ProjectController {
       // enable services
       for (ProjectServiceEnum service : projectServices) {
         try {
-          addService(project, service, owner, dfso);
+          projectCreationFutures.addAll(addService(project, service, owner, dfso));
         } catch (RESTException ex) {
-          cleanup(project, sessionId, certsGenerationFuture);
+          cleanup(project, sessionId, projectCreationFutures);
           throw ex;
         }
       }
@@ -404,21 +406,25 @@ public class ProjectController {
       //add members of the project   
       try {
         failedMembers = new ArrayList<>();
-        failedMembers.addAll(addMembers(project, owner.getEmail(), projectDTO.getProjectTeam()));
+        failedMembers.addAll(addMembers(project, owner, projectDTO.getProjectTeam()));
       } catch (KafkaException | UserException | ProjectException | EJBException ex) {
-        cleanup(project, sessionId, certsGenerationFuture);
+        cleanup(project, sessionId, projectCreationFutures);
         throw ex;
       }
       LOGGER.log(Level.FINE, "PROJECT CREATION TIME. Step 9 (members): {0}", System.currentTimeMillis() - startTime);
 
-      try {
-        if (certsGenerationFuture != null) {
-          certsGenerationFuture.get();
+      if (projectCreationFutures != null) {
+        try {
+          for (Future f : projectCreationFutures) {
+            if (f != null) {
+              f.get();
+            }
+          }
+        } catch (InterruptedException | ExecutionException ex) {
+          LOGGER.log(Level.SEVERE, "Error while waiting for the certificate "
+              + "generation thread to finish. Will try to cleanup...", ex);
+          cleanup(project, sessionId, projectCreationFutures);
         }
-      } catch (InterruptedException | ExecutionException ex) {
-        LOGGER.log(Level.SEVERE, "Error while waiting for the certificate "
-            + "generation thread to finish. Will try to cleanup...", ex);
-        cleanup(project, sessionId, certsGenerationFuture);
       }
 
       // Run the handlers.
@@ -426,7 +432,7 @@ public class ProjectController {
         try {
           projectHandler.postCreate(project);
         } catch (Exception e) {
-          cleanup(project, sessionId, certsGenerationFuture);
+          cleanup(project, sessionId, projectCreationFutures);
           throw new ProjectException(RESTCodes.ProjectErrorCode.PROJECT_HANDLER_POSTCREATE_ERROR, Level.SEVERE,
             "project: " + projectName, e.getMessage(), e);
         }
@@ -545,8 +551,7 @@ public class ProjectController {
 
   @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
   private boolean noExistingUser(String projectName) {
-    List<HdfsUsers> hdfsUsers = hdfsUsersBean.
-        getAllProjectHdfsUsers(projectName);
+    List<HdfsUsers> hdfsUsers = hdfsUsersController.getAllProjectHdfsUsers(projectName);
     if (hdfsUsers != null && !hdfsUsers.isEmpty()) {
       LOGGER.log(Level.WARNING, "hdfs users exist for project {0}",
           projectName);
@@ -557,8 +562,7 @@ public class ProjectController {
 
   @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
   private boolean noExistingGroup(String projectName) {
-    List<HdfsGroups> hdfsGroups = hdfsUsersBean.
-        getAllProjectHdfsGroups(projectName);
+    List<HdfsGroups> hdfsGroups = hdfsUsersController.getAllProjectHdfsGroups(projectName);
     if (hdfsGroups != null && !hdfsGroups.isEmpty()) {
       LOGGER.log(Level.WARNING, () -> "hdfs group(s) exist for project: " + projectName + ", group(s): "
           + Arrays.toString(hdfsGroups.toArray()));
@@ -678,25 +682,27 @@ public class ProjectController {
   }
 
   // Used only during project creation
-  private boolean addService(Project project, ProjectServiceEnum service,
+  private List<Future<?>> addService(Project project, ProjectServiceEnum service,
       Users user, DistributedFileSystemOps dfso)
     throws ProjectException, ServiceException, DatasetException, HopsSecurityException {
     return addService(project, service, user, dfso, dfso);
   }
 
-  public boolean addService(Project project, ProjectServiceEnum service,
-      Users user, DistributedFileSystemOps dfso,
-      DistributedFileSystemOps udfso) throws ProjectException, ServiceException, DatasetException,
-    HopsSecurityException {
+  public List<Future<?>> addService(Project project, ProjectServiceEnum service,
+      Users user, DistributedFileSystemOps dfso, DistributedFileSystemOps udfso)
+    throws ProjectException, ServiceException, DatasetException, HopsSecurityException {
+
+    List<Future<?>> futureList = new ArrayList<>();
+
     if (projectServicesFacade.isServiceEnabledForProject(project, service)) {
-      // Service already enabled fro the current project. Nothing to do
-      return false;
+      // Service already enabled for the current project. Nothing to do
+      return null;
     }
 
     switch (service) {
       case JUPYTER:
         addServiceDataset(project, user, Settings.ServiceDataset.JUPYTER, dfso, udfso);
-        addElasticsearch(project);
+        addKibana(project, service);
         if (!projectServicesFacade.isServiceEnabledForProject(project, ProjectServiceEnum.JOBS)) {
           addServiceDataset(project, user, Settings.ServiceDataset.EXPERIMENTS, dfso, udfso);
         }
@@ -707,10 +713,10 @@ public class ProjectController {
         addServiceDataset(project, user, Settings.ServiceDataset.ZEPPELIN, dfso, udfso);
         break;
       case SERVING:
-        addServiceDataset(project, user, Settings.ServiceDataset.SERVING, dfso, udfso);
+        futureList.add(addServiceServing(project, user, dfso, udfso));
         break;
       case JOBS:
-        addElasticsearch(project);
+        addKibana(project, service);
         if (!projectServicesFacade.isServiceEnabledForProject(project, ProjectServiceEnum.JUPYTER)) {
           addServiceDataset(project, user, Settings.ServiceDataset.EXPERIMENTS, dfso, udfso);
         }
@@ -728,7 +734,7 @@ public class ProjectController {
       logActivity(ActivityFacade.ADDED_SERVICE + ProjectServiceEnum.ZEPPELIN.toString(),
           ActivityFacade.FLAG_PROJECT, user, project);
     }
-    return true;
+    return futureList;
   }
 
   private void addServiceDataset(Project project, Users user,
@@ -769,6 +775,45 @@ public class ProjectController {
       throw new ProjectException(RESTCodes.ProjectErrorCode.PROJECT_HIVEDB_CREATE_ERROR, Level.SEVERE,
         "project: " + project.getName(), ex.getMessage(), ex);
     }
+  }
+
+  private Future<CertificatesController.CertsResult> addServiceServing(Project project, Users user,
+                                 DistributedFileSystemOps dfso, DistributedFileSystemOps udfso)
+      throws ProjectException, DatasetException, HopsSecurityException {
+
+    addServiceDataset(project, user, Settings.ServiceDataset.SERVING, dfso, udfso);
+    elasticController.createIndexPattern(project, project.getName().toLowerCase() + "_serving-*");
+    // If Kafka is not enabled for the project, enable it
+    if (!projectServicesFacade.isServiceEnabledForProject(project, ProjectServiceEnum.KAFKA)) {
+      projectServicesFacade.addServiceForProject(project, ProjectServiceEnum.KAFKA);
+    }
+    return addServingManager(project);
+  }
+
+  /**
+   * Add to the project the serving manager. The user responsible of writing the inference logs to kafka
+   * @param project
+   */
+  private Future<CertificatesController.CertsResult> addServingManager(Project project) throws HopsSecurityException {
+    // Add the Serving Manager user to the project team
+    Users servingManagerUser = userFacade.findByUsername(KafkaInferenceLogger.SERVING_MANAGER_USERNAME);
+    ProjectTeamPK stp = new ProjectTeamPK(project.getId(), servingManagerUser.getEmail());
+    ProjectTeam st = new ProjectTeam(stp);
+    st.setTeamRole(ProjectRoleTypes.DATA_SCIENTIST.getRole());
+    st.setTimestamp(new Date());
+    projectTeamFacade.persistProjectTeam(st);
+    // Create the Hdfs user
+    hdfsUsersController.addNewProjectMember(project, st);
+    // Create the certificate for this project user
+    Future<CertificatesController.CertsResult> certsResultFuture = null;
+    try {
+      certsResultFuture = certificatesController.generateCertificates(project, servingManagerUser, false);
+    } catch (Exception e) {
+      throw new HopsSecurityException(RESTCodes.SecurityErrorCode.CERT_CREATION_ERROR, Level.SEVERE,
+          "project: " + project.getName() + "owner: servingmanager" , e.getMessage(), e);
+    }
+
+    return certsResultFuture;
   }
 
   /**
@@ -877,9 +922,9 @@ public class ProjectController {
     if (project == null) {
       throw new ProjectException(RESTCodes.ProjectErrorCode.PROJECT_NOT_FOUND, Level.FINE, "projectId: " + projectId);
     }
-    //Only project owner is able to delete a project
+    //Only project owner and admin is able to delete a project
     Users user = userFacade.findByEmail(userMail);
-    if (!project.getOwner().equals(user)) {
+    if (!project.getOwner().equals(user) && !usersController.isUserInRole(user, "HOPS_ADMIN")) {
       throw new ProjectException(RESTCodes.ProjectErrorCode.PROJECT_REMOVAL_NOT_ALLOWED, Level.FINE);
     }
     
@@ -1165,9 +1210,9 @@ public class ProjectController {
         }
 
         // Kill jobs
-        List<HdfsUsers> projectHdfsUsers = hdfsUsersBean.getAllProjectHdfsUsers(projectName);
+        List<HdfsUsers> projectHdfsUsers = hdfsUsersController.getAllProjectHdfsUsers(projectName);
         try {
-          Set<String> hdfsUsersStr = new HashSet();
+          Set<String> hdfsUsersStr = new HashSet<>();
           for (HdfsUsers hdfsUser : projectHdfsUsers) {
             hdfsUsersStr.add(hdfsUser.getName());
           }
@@ -1214,7 +1259,7 @@ public class ProjectController {
 
         // Remove HDFS Groups and Users
         try {
-          List<HdfsGroups> projectHdfsGroups = hdfsUsersBean.getAllProjectHdfsGroups(projectName);
+          List<HdfsGroups> projectHdfsGroups = hdfsUsersController.getAllProjectHdfsGroups(projectName);
           removeGroupAndUsers(projectHdfsGroups, projectHdfsUsers);
           cleanupLogger.logSuccess("Removed HDFS Groups and Users");
         } catch (IOException ex) {
@@ -1405,13 +1450,14 @@ public class ProjectController {
   }
 
   public void cleanup(Project project, String sessionId,
-      Future<CertificatesController.CertsResult> certsGenerationFuture) throws GenericException {
-    cleanup(project, sessionId, certsGenerationFuture, true);
+      List<Future<?>> projectCreationFutures) throws GenericException {
+    cleanup(project, sessionId, projectCreationFutures, true);
   }
   
   public void cleanup(Project project, String sessionId,
-      Future<CertificatesController.CertsResult> certsGenerationFuture, boolean decreaseCreatedProj)
+      List<Future<?>> projectCreationFutures, boolean decreaseCreatedProj)
     throws GenericException {
+
     if (project == null) {
       return;
     }
@@ -1458,7 +1504,7 @@ public class ProjectController {
 
         List<HdfsUsers> usersToClean = getUsersToClean(project);
         List<HdfsGroups> groupsToClean = getGroupsToClean(project);
-        removeProjectInt(project, usersToClean, groupsToClean, certsGenerationFuture, decreaseCreatedProj);
+        removeProjectInt(project, usersToClean, groupsToClean, projectCreationFutures, decreaseCreatedProj);
         break;
       } catch (Exception ex) {
         nbTry++;
@@ -1478,7 +1524,7 @@ public class ProjectController {
   }
 
   private void removeProjectInt(Project project, List<HdfsUsers> usersToClean,
-      List<HdfsGroups> groupsToClean, Future<CertificatesController.CertsResult> certsGenerationFuture,
+      List<HdfsGroups> groupsToClean, List<Future<?>> projectCreationFutures,
       boolean decreaseCreatedProj)
     throws IOException, InterruptedException, ExecutionException,
     CAException, ServiceException, ProjectException {
@@ -1512,10 +1558,15 @@ public class ProjectController {
       //remove kafka topics
       removeKafkaTopics(project);
 
-      //remove user certificate from local node 
-      //(they will be removed from db when the project folder is deleted)
-      if (certsGenerationFuture != null) {
-        certsGenerationFuture.get();
+      // remove user certificate from local node
+      // (they will be removed from db when the project folder is deleted)
+      // projectCreationFutures will be null during project deletion.
+      if (projectCreationFutures != null) {
+        for (Future f : projectCreationFutures) {
+          if (f != null) {
+            f.get();
+          }
+        }
       }
 
       try {
@@ -1608,13 +1659,13 @@ public class ProjectController {
 
   @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
   private List<HdfsUsers> getUsersToClean(Project project) {
-    return hdfsUsersBean.getAllProjectHdfsUsers(project.getName());
+    return hdfsUsersController.getAllProjectHdfsUsers(project.getName());
   }
 
   @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
   private List<HdfsGroups> getGroupsToClean(Project project) {
 
-    return hdfsUsersBean.getAllProjectHdfsGroups(project.getName());
+    return hdfsUsersController.getAllProjectHdfsGroups(project.getName());
 
   }
 
@@ -1653,8 +1704,8 @@ public class ProjectController {
       TransactionAttributeType.REQUIRES_NEW)
   private void removeGroupAndUsers(List<HdfsGroups> groups,
       List<HdfsUsers> users) throws IOException {
-    hdfsUsersBean.deleteGroups(groups);
-    hdfsUsersBean.deleteUsers(users);
+    hdfsUsersController.deleteGroups(groups);
+    hdfsUsersController.deleteUsers(users);
   }
 
   private void removeProjectFolder(String projectName,
@@ -1672,20 +1723,22 @@ public class ProjectController {
    *
    *
    * @param project
-   * @param ownerEmail
+   * @param owner
    * @param projectTeams
    * @return a list of user names that could not be added to the project team
    * list.
+   * @throws io.hops.hopsworks.common.exception.KafkaException
+   * @throws io.hops.hopsworks.common.exception.ProjectException
+   * @throws io.hops.hopsworks.common.exception.UserException
    */
   @TransactionAttribute(TransactionAttributeType.NEVER)
-  public List<String> addMembers(Project project, String ownerEmail,
-      List<ProjectTeam> projectTeams) throws KafkaException, ProjectException, UserException {
+  public List<String> addMembers(Project project, Users owner, List<ProjectTeam> projectTeams) throws KafkaException,
+      ProjectException, UserException {
     List<String> failedList = new ArrayList<>();
     if (projectTeams == null) {
       return failedList;
     }
 
-    Users owner = userFacade.findByEmail(ownerEmail);
     Users newMember;
     for (ProjectTeam projectTeam : projectTeams) {
       try {
@@ -1708,13 +1761,8 @@ public class ProjectController {
             //first param b/c the securty check was made on the parameter sent as path.
             projectTeam.getProjectTeamPK().setProjectId(project.getId());
             projectTeamFacade.persistProjectTeam(projectTeam);
-            try {
-              hdfsUsersBean.addNewProjectMember(project, projectTeam);
-            } catch (IOException ex) {
-              LOGGER.log(Level.SEVERE,"Could not add member:"+newMember+" to project:"+project+" in HDFS.", ex);
-              projectTeamFacade.removeProjectTeam(project, newMember);
-              throw new EJBException("Could not add member:"+newMember+" to project:"+project+" in HDFS.");
-            }
+            hdfsUsersController.addNewProjectMember(project, projectTeam);
+
             //Add user to kafka topics ACLs by default
             if (projectServicesFacade.isServiceEnabledForProject(project, ProjectServiceEnum.KAFKA)) {
               kafkaController.addProjectMemberToTopics(project, newMember.getEmail());
@@ -1744,7 +1792,7 @@ public class ProjectController {
               LOGGER.log(Level.SEVERE, "error while creating certificates, jupyter kernel: " + ex.getMessage(), ex);
               projectTeamFacade.removeProjectTeam(project, newMember);
               try {
-                hdfsUsersBean.removeProjectMember(newMember, project);
+                hdfsUsersController.removeProjectMember(newMember, project);
               } catch (IOException ex1) {
                 LOGGER.log(Level.SEVERE, null, ex1);
                 throw new ProjectException(RESTCodes.ProjectErrorCode.PROJECT_MEMBER_NOT_REMOVED,
@@ -1957,27 +2005,29 @@ public class ProjectController {
    * Deletes a member from a project
    *
    * @param project
-   * @param email
+   * @param user
    * @param toRemoveEmail
+   * @throws io.hops.hopsworks.common.exception.UserException
+   * @throws io.hops.hopsworks.common.exception.ProjectException
+   * @throws io.hops.hopsworks.common.exception.ServiceException
+   * @throws java.io.IOException
+   * @throws io.hops.hopsworks.common.security.CAException
    */
-  public void removeMemberFromTeam(Project project, String email,
-      String toRemoveEmail) throws UserException, ProjectException, ServiceException, IOException, CAException {
+  public void removeMemberFromTeam(Project project, Users user, String toRemoveEmail) throws UserException,
+      ProjectException, ServiceException, IOException, CAException {
     Users userToBeRemoved = userFacade.findByEmail(toRemoveEmail);
     if (userToBeRemoved == null) {
-      throw new UserException(RESTCodes.UserErrorCode.USER_WAS_NOT_FOUND, Level.FINE, "user: " + email);
+      throw new UserException(RESTCodes.UserErrorCode.USER_WAS_NOT_FOUND, Level.FINE, "user: " + user.getEmail());
     }
-    ProjectTeam projectTeam = projectTeamFacade.findProjectTeam(project,
-        userToBeRemoved);
+    ProjectTeam projectTeam = projectTeamFacade.findProjectTeam(project, userToBeRemoved);
     if (projectTeam == null) {
       throw new ProjectException(RESTCodes.ProjectErrorCode.TEAM_MEMBER_NOT_FOUND, Level.FINE,
-        "project: " + project + ", user: " + email);
+        "project: " + project + ", user: " + user.getEmail());
     }
     projectTeamFacade.removeProjectTeam(project, userToBeRemoved);
-    Users user = userFacade.findByEmail(email);
     String hdfsUser = hdfsUsersController.getHdfsUserName(project, userToBeRemoved);
 
-    YarnClientWrapper yarnClientWrapper = ycs.getYarnClientSuper(settings
-        .getConfiguration());
+    YarnClientWrapper yarnClientWrapper = ycs.getYarnClientSuper(settings.getConfiguration());
     YarnClient client = yarnClientWrapper.getYarnClient();
     try {
       Set<String> hdfsUsers = new HashSet<>();
@@ -2045,8 +2095,7 @@ public class ProjectController {
 
     kafkaController.removeProjectMemberFromTopics(project, userToBeRemoved);
 
-    logActivity(ActivityFacade.REMOVED_MEMBER + toRemoveEmail,
-        ActivityFacade.FLAG_PROJECT, user, project);
+    logActivity(ActivityFacade.REMOVED_MEMBER + userToBeRemoved.getEmail(), ActivityFacade.FLAG_PROJECT, user, project);
     
     certificateMaterializer.forceRemoveLocalMaterial(userToBeRemoved.getUsername(), project.getName(), null, false);
     certificatesController.deleteUserSpecificCertificates(project, userToBeRemoved);
@@ -2056,16 +2105,16 @@ public class ProjectController {
    * Updates the role of a member
    *
    * @param project
-   * @param owner that is performing the update
+   * @param opsOwner
    * @param toUpdateEmail
    * @param newRole
+   * @throws io.hops.hopsworks.common.exception.UserException
+   * @throws io.hops.hopsworks.common.exception.ProjectException
    */
-  @TransactionAttribute(
-      TransactionAttributeType.REQUIRES_NEW)
-  public void updateMemberRole(Project project, String owner,
-      String toUpdateEmail, String newRole) throws UserException, ProjectException {
+  @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+  public void updateMemberRole(Project project, Users opsOwner, String toUpdateEmail, String newRole) throws
+      UserException, ProjectException {
     Users projOwner = project.getOwner();
-    Users opsOwner = userFacade.findByEmail(owner);
     Users user = userFacade.findByEmail(toUpdateEmail);
     if (projOwner.equals(user)) {
       throw new ProjectException(RESTCodes.ProjectErrorCode.PROJECT_OWNER_ROLE_NOT_ALLOWED, Level.FINE,
@@ -2086,9 +2135,9 @@ public class ProjectController {
       projectTeamFacade.update(projectTeam);
 
       if (newRole.equals(AllowedRoles.DATA_OWNER)) {
-        hdfsUsersBean.addUserToProjectGroup(project, projectTeam);
+        hdfsUsersController.addUserToProjectGroup(project, projectTeam);
       } else {
-        hdfsUsersBean.modifyProjectMembership(user, project);
+        hdfsUsersController.modifyProjectMembership(user, project);
       }
 
       logActivity(ActivityFacade.CHANGE_ROLE + toUpdateEmail,
@@ -2209,8 +2258,8 @@ public class ProjectController {
             String hdfsJarPath = "/" + Settings.DIR_ROOT + "/" + project.getName() + "/" + Settings.HOPS_TOUR_DATASET
                 + "/spark-examples.jar";
             udfso.copyToHDFSFromLocal(false, file[0].getAbsolutePath(), hdfsJarPath);
-            String datasetGroup = hdfsUsersBean.getHdfsGroupName(project, Settings.HOPS_TOUR_DATASET);
-            String userHdfsName = hdfsUsersBean.getHdfsUserName(project, user);
+            String datasetGroup = hdfsUsersController.getHdfsGroupName(project, Settings.HOPS_TOUR_DATASET);
+            String userHdfsName = hdfsUsersController.getHdfsUserName(project, user);
             udfso.setPermission(new Path(hdfsJarPath), udfso.getParentPermission(new Path(hdfsJarPath)));
             udfso.setOwner(new Path("/" + Settings.DIR_ROOT + "/" + project.getName() + "/" + Settings.HOPS_TOUR_DATASET
                 + "/spark-examples.jar"), userHdfsName, datasetGroup);
@@ -2228,8 +2277,8 @@ public class ProjectController {
               + "/" + Settings.HOPS_TOUR_DATASET + "/" + settings.getHopsExamplesFilename();
           try {
             udfso.copyInHdfs(new Path(kafkaExampleSrc), new Path(kafkaExampleDst));
-            String datasetGroup = hdfsUsersBean.getHdfsGroupName(project, Settings.HOPS_TOUR_DATASET);
-            String userHdfsName = hdfsUsersBean.getHdfsUserName(project, user);
+            String datasetGroup = hdfsUsersController.getHdfsGroupName(project, Settings.HOPS_TOUR_DATASET);
+            String userHdfsName = hdfsUsersController.getHdfsUserName(project, user);
             udfso.setPermission(new Path(kafkaExampleDst), udfso.getParentPermission(new Path(kafkaExampleDst)));
             udfso.setOwner(new Path(kafkaExampleDst), userHdfsName, datasetGroup);
 
@@ -2247,8 +2296,8 @@ public class ProjectController {
               + Settings.HOPS_TOUR_DATASET;
           try {
             udfso.copyInHdfs(new Path(DLDataSrc), new Path(DLDataDst));
-            String datasetGroup = hdfsUsersBean.getHdfsGroupName(project, Settings.HOPS_TOUR_DATASET);
-            String userHdfsName = hdfsUsersBean.getHdfsUserName(project, user);
+            String datasetGroup = hdfsUsersController.getHdfsGroupName(project, Settings.HOPS_TOUR_DATASET);
+            String userHdfsName = hdfsUsersController.getHdfsUserName(project, user);
             Inode parent = inodes.getInodeAtPath(DLDataDst);
             List<Inode> children = new ArrayList<>();
             inodes.getAllChildren(parent, children);
@@ -2265,7 +2314,7 @@ public class ProjectController {
               String DLNotebooksDst = "/" + Settings.DIR_ROOT + "/" + project.getName() + "/"
                   + Settings.HOPS_TOUR_DATASET_JUPYTER;
               udfso.copyInHdfs(new Path(DLNotebooksSrc + "/*"), new Path(DLNotebooksDst));
-              datasetGroup = hdfsUsersBean.getHdfsGroupName(project, Settings.HOPS_TOUR_DATASET_JUPYTER);
+              datasetGroup = hdfsUsersController.getHdfsGroupName(project, Settings.HOPS_TOUR_DATASET_JUPYTER);
               Inode parentJupyterDs = inodes.getInodeAtPath(DLNotebooksDst);
               List<Inode> childrenJupyterDs = new ArrayList<>();
               inodes.getAllChildren(parentJupyterDs, childrenJupyterDs);
@@ -2326,130 +2375,113 @@ public class ProjectController {
 
   /**
    * Handles Kibana related indices and templates for projects.
-   *
-   * @param project
-   * @return
+   * @param project project
+   * @throws ProjectException ProjectException
+   * @throws ServiceException ServiceException
    */
-  public void addElasticsearch(Project project) throws ProjectException, ServiceException {
-            
+  public void addKibana(Project project, ProjectServiceEnum service) throws ProjectException, ServiceException {
+  
     String projectName = project.getName().toLowerCase();
-    Map<String, String> params = new HashMap<>();
-    params.put("op", "POST");
-    params.put("project", projectName + "_logs");
-    params.put("resource", "");
-    params.put("data", "{\"attributes\": {\"title\": \"" + projectName + "_logs-*"  + "\"}}");
-  
-    JSONObject resp = elasticController.sendKibanaReq(params, "index-pattern", projectName + "_logs-*");
-  
-    if (!(resp.has("updated_at") || (resp.has("statusCode") && resp.get("statusCode").toString().equals("409")))) {
-      throw new ProjectException(RESTCodes.ProjectErrorCode.PROJECT_SERVICE_ADD_FAILURE, Level.SEVERE, "Could not " +
-        "create logs index for project: " + projectName);
-    }
-
-    params.clear();
-
-    String indexName = project.getName().toLowerCase() + "_" + Settings.ELASTIC_EXPERIMENTS_INDEX;
-
-    if(!elasticController.indexExists(indexName)) {
-      elasticController.createIndex(indexName);
-    }
-
-    params.clear();
-    params.put("op", "POST");
-    params.put("data", "{\"attributes\": {\"title\": \"" + indexName  + "\"}}");
-    resp = elasticController.sendKibanaReq(params, "index-pattern", indexName, true);
-  
-    if (!(resp.has("updated_at") || (resp.has("statusCode") && resp.get("statusCode").toString().equals("409")))) {
-      throw new ProjectException(RESTCodes.ProjectErrorCode.PROJECT_KIBANA_CREATE_INDEX_ERROR, Level.SEVERE,
-        "project: " + projectName + ", resp: " + resp.toString(2));
-    }
-
-    String savedSummarySearch =
-            "{\"attributes\":{\"title\":\"Experiments summary\",\"description\":\"\",\"hits\":0,\"columns\"" +
-                    ":[\"_id\",\"user\",\"name\",\"start\",\"finished\",\"status\",\"module\",\"function\"" +
-                    ",\"hyperparameter\"" +
-                    ",\"metric\"],\"sort\":[\"start\"" +
-                    ",\"desc\"],\"version\":1,\"kibanaSavedObjectMeta\":{\"searchSourceJSON\":\"" +
-                    "{\\\"index\\\":\\\"" + indexName + "\\\",\\\"highlightAll\\\":true,\\\"version\\\":true" +
-                    ",\\\"query\\\":{\\\"language\\\":\\\"lucene\\\",\\\"query\\\":\\\"\\\"},\\\"filter\\\":" +
-                    "[]}\"}}}";
-    params.clear();
-    params.put("op", "POST");
-    params.put("data", savedSummarySearch);
-    resp = elasticController.sendKibanaReq(params, "search", indexName + "_summary-search", true);
-
-    if (!(resp.has("updated_at") || (resp.has("statusCode") && resp.get("statusCode").toString().equals("409")))) {
-      throw new ProjectException(RESTCodes.ProjectErrorCode.PROJECT_KIBANA_CREATE_SEARCH_ERROR, Level.SEVERE,
-        "project: " + projectName + ", resp: " + resp.toString(2));
-    }
-
-    String savedSummaryDashboard =
-            "{\"attributes\":{\"title\":\"Experiments summary dashboard\",\"hits\":0,\"description\":\"" +
-                    "A summary of all experiments run in this project\",\"panelsJSON\":\"[{\\\"gridData\\\"" +
-                    ":{\\\"h\\\":9,\\\"i\\\":\\\"1\\\",\\\"w\\\":12,\\\"x\\\":0,\\\"y\\\":0},\\\"id\\\"" +
-                    ":\\\"" + indexName + "_summary-search" + "\\\",\\\"panelIndex\\\":\\\"1\\\"" +
-                    ",\\\"type\\\":\\\"search\\\"" +
-                    ",\\\"version\\\":\\\"6.2.3\\\"}]\",\"optionsJSON\":\"{\\\"darkTheme\\\":false" +
-                    ",\\\"hidePanelTitles\\\":false,\\\"useMargins\\\":true}\",\"version\":1,\"timeRestore\":" +
-                    "false" +
-                    ",\"kibanaSavedObjectMeta\":{\"searchSourceJSON\":\"{\\\"query\\\":{\\\"language\\\"" +
-                    ":\\\"lucene\\\",\\\"query\\\":\\\"\\\"},\\\"filter\\\":[],\\\"highlightAll\\\":" +
-                    "true,\\\"version\\\":true}\"}}}";
-    params.clear();
-    params.put("op", "POST");
-    params.put("data", savedSummaryDashboard);
-    resp = elasticController.sendKibanaReq(params, "dashboard", indexName + "_summary-dashboard", true);
-  
-    if (!(resp.has("updated_at") || (resp.has("statusCode") && resp.get("statusCode").toString().equals("409")))) {
-      throw new ProjectException(RESTCodes.ProjectErrorCode.PROJECT_KIBANA_CREATE_DASHBOARD_ERROR, Level.SEVERE,
-        "project: " + projectName + ", resp: " + resp.toString(2));
+    switch (service) {
+      case JOBS:
+        // Create index pattern in Kibana for spark logs
+        elasticController.createIndexPattern(project, projectName + Settings.ELASTIC_LOGS_INDEX_PATTERN);
+        break;
+      case JUPYTER:
+        // Create index and index-pattern for experiment service
+        String indexName = projectName + "_" + Settings.ELASTIC_EXPERIMENTS_INDEX;
+        if (!elasticController.indexExists(indexName)) {
+          elasticController.createIndex(indexName);
+        }
+      
+        elasticController.createIndexPattern(project, indexName);
+      
+        String savedSummarySearch =
+          "{\"attributes\":{\"title\":\"Experiments summary\",\"description\":\"\",\"hits\":0,\"columns\"" +
+            ":[\"_id\",\"user\",\"name\",\"start\",\"finished\",\"status\",\"module\",\"function\"" +
+            ",\"hyperparameter\"" +
+            ",\"metric\"],\"sort\":[\"start\"" +
+            ",\"desc\"],\"version\":1,\"kibanaSavedObjectMeta\":{\"searchSourceJSON\":\"" +
+            "{\\\"index\\\":\\\"" + indexName + "\\\",\\\"highlightAll\\\":true,\\\"version\\\":true" +
+            ",\\\"query\\\":{\\\"language\\\":\\\"lucene\\\",\\\"query\\\":\\\"\\\"},\\\"filter\\\":" +
+            "[]}\"}}}";
+      
+        Map<String, String> params = new HashMap<>();
+        params.put("op", "POST");
+        params.put("data", savedSummarySearch);
+        JSONObject resp = elasticController.sendKibanaReq(params, "search", indexName + "_summary-search", true);
+      
+        if (!(resp.has("updated_at") || (resp.has("statusCode") && resp.get("statusCode").toString().equals("409")))) {
+          throw new ProjectException(RESTCodes.ProjectErrorCode.PROJECT_KIBANA_CREATE_SEARCH_ERROR, Level.SEVERE,
+            "project: " + projectName + ", resp: " + resp.toString(2));
+        }
+      
+        String savedSummaryDashboard =
+          "{\"attributes\":{\"title\":\"Experiments summary dashboard\",\"hits\":0,\"description\":\"" +
+            "A summary of all experiments run in this project\",\"panelsJSON\":\"[{\\\"gridData\\\"" +
+            ":{\\\"h\\\":9,\\\"i\\\":\\\"1\\\",\\\"w\\\":12,\\\"x\\\":0,\\\"y\\\":0},\\\"id\\\"" +
+            ":\\\"" + indexName + "_summary-search" + "\\\",\\\"panelIndex\\\":\\\"1\\\"" +
+            ",\\\"type\\\":\\\"search\\\"" +
+            ",\\\"version\\\":\\\"" + settings.getKibanaVersion() +
+            "\\\"}]\",\"optionsJSON\":\"{\\\"darkTheme\\\":false" +
+            ",\\\"hidePanelTitles\\\":false,\\\"useMargins\\\":true}\",\"version\":1,\"timeRestore\":" +
+            "false" +
+            ",\"kibanaSavedObjectMeta\":{\"searchSourceJSON\":\"{\\\"query\\\":{\\\"language\\\"" +
+            ":\\\"lucene\\\",\\\"query\\\":\\\"\\\"},\\\"filter\\\":[],\\\"highlightAll\\\":" +
+            "true,\\\"version\\\":true}\"}}}";
+        params.clear();
+        params.put("op", "POST");
+        params.put("data", savedSummaryDashboard);
+        resp = elasticController.sendKibanaReq(params, "dashboard", indexName + "_summary-dashboard", true);
+      
+        if (!(resp.has("updated_at") || (resp.has("statusCode") && resp.get("statusCode").toString().equals("409")))) {
+          throw new ProjectException(RESTCodes.ProjectErrorCode.PROJECT_KIBANA_CREATE_DASHBOARD_ERROR, Level.SEVERE,
+            "project: " + projectName + ", resp: " + resp.toString(2));
+        }
+        break;
+      default:
+        break;
     }
   }
 
   public void removeElasticsearch(Project project) throws ServiceException {
     Map<String, String> params = new HashMap<>();
+    params.put("op", "DELETE");
 
     List<ProjectServiceEnum> projectServices = projectServicesFacade.
             findEnabledServicesForProject(project);
 
     String projectName = project.getName().toLowerCase();
 
-    for(ProjectServiceEnum service: projectServices) {
-      if(service.equals(ProjectServiceEnum.JOBS) || service.equals(ProjectServiceEnum.JUPYTER)) {
-        
-        //1. Delete visualizations, saved searches, dashboards
-        List<String> projectNames = new ArrayList<>();
-        projectNames.add(project.getName());
-        LOGGER.log(Level.INFO, "removeElasticsearch-2:{0}", projectNames);
-        elasticController.deleteProjectSavedObjects(projectNames);
-        
-        //2. Delete Kibana Index
-        params.clear();
-        params.put("op", "DELETE");
-        params.put("resource", "");
-        JSONObject resp = elasticController.sendKibanaReq(params, "index-pattern", projectName + "_logs-*");
-        LOGGER.log(Level.FINE, resp.toString(4));
+    if (projectServices.contains(ProjectServiceEnum.JOBS)
+        || projectServices.contains(ProjectServiceEnum.JUPYTER)
+        || projectServices.contains(ProjectServiceEnum.SERVING)) {
+      elasticController.deleteProjectIndices(project);
+    }
 
-        //3. Delete Elasticsearch Index
-        elasticController.deleteProjectIndices(project);
+    if (projectServices.contains(ProjectServiceEnum.JOBS) || projectServices.contains(ProjectServiceEnum.JUPYTER)) {
+      //1. Delete visualizations, saved searches, dashboards
+      List<String> projectNames = new ArrayList<>();
+      projectNames.add(project.getName());
+      LOGGER.log(Level.FINE, "removeElasticsearch-1:{0}", projectNames);
+      elasticController.deleteProjectSavedObjects(projectNames);
 
-        String experimentsIndex = project.getName().toLowerCase() + "_" + Settings.ELASTIC_EXPERIMENTS_INDEX;
+      //2. Delete Kibana Index
+      JSONObject resp = elasticController.sendKibanaReq(params, "index-pattern", projectName + "_logs-*");
+      LOGGER.log(Level.FINE, resp.toString(4));
 
-        if(elasticController.indexExists(experimentsIndex)) {
-          elasticController.deleteIndex(experimentsIndex);
-        }
+      // 3. Cleanup Experiment related Kibana stuff
+      String experimentsIndex = projectName + "_" + Settings.ELASTIC_EXPERIMENTS_INDEX;
+      elasticController.sendKibanaReq(params, "index-pattern", experimentsIndex, false);
+      elasticController.sendKibanaReq(params, "search", experimentsIndex + "_summary-search", false);
+      elasticController.sendKibanaReq(params, "dashboard", experimentsIndex + "_summary-dashboard", false);
+      LOGGER.log(Level.FINE, "removeElasticsearch-2");
+    }
 
-        params.clear();
-        params.put("op", "DELETE");
-        elasticController.sendKibanaReq(params, "index-pattern", experimentsIndex, false);
-        params.clear();
-        params.put("op", "DELETE");
-        elasticController.sendKibanaReq(params, "search", experimentsIndex + "_summary-search", false);
-        params.clear();
-        params.put("op", "DELETE");
-        elasticController.sendKibanaReq(params, "dashboard", experimentsIndex + "_summary-dashboard", false);
-        LOGGER.log(Level.INFO, () -> "removeElasticsearch-1:" +service);
-      }
+    if (projectServices.contains(ProjectServiceEnum.SERVING)) {
+      JSONObject resp = elasticController.sendKibanaReq(params, "index-pattern",
+        projectName + Settings.ELASTIC_SERVING_INDEX_PATTERN);
+      LOGGER.log(Level.FINE, resp.toString(4));
     }
   }
 
@@ -2509,9 +2541,9 @@ public class ProjectController {
     byte[] userKey;
 
     if (isProjectSpecific) {
-      userKey = userCertsFacade.findUserCert(hdfsUsersBean.
+      userKey = userCertsFacade.findUserCert(hdfsUsersController.
           getProjectName(commonName),
-          hdfsUsersBean.getUserName(commonName)).getUserKey();
+          hdfsUsersController.getUserName(commonName)).getUserKey();
     } else {
       // In that case projectUser is the name of the Project, see Spark
       // interpreter in Zeppelin
