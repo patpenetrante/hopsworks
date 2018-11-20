@@ -13,15 +13,17 @@
  * You should have received a copy of the GNU Affero General Public License along with this program.
  * If not, see <https://www.gnu.org/licenses/>.
  */
-package io.hops.hopsworks.jwt.annotation;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
+package io.hops.hopsworks.common.serving.inference.logger;
 
-@Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.TYPE, ElementType.METHOD})
-public @interface AllowedUserRoles {
-  String[] value();
+import io.hops.hopsworks.common.dao.serving.TfServing;
+
+public interface InferenceLogger {
+
+  void logInferenceRequest(TfServing tfServing,
+                           String inferenceRequest,
+                           Integer responseHttpCode,
+                           String inferenceResult) throws Exception;
+
+  String getClassName();
 }

@@ -54,12 +54,16 @@ public class ApplicationConfig extends ResourceConfig {
     register(io.hops.hopsworks.api.agent.AgentResource.class);
     register(io.hops.hopsworks.api.elastic.ElasticService.class);
     register(RESTApiThrowableMapper.class);
-    register(io.hops.hopsworks.api.filter.RequestAuthFilter.class);
+    register(io.hops.hopsworks.api.filter.ProjectAuthFilter.class);
+    register(io.hops.hopsworks.api.filter.AuthFilter.class);
+    register(io.hops.hopsworks.api.filter.JWTAutoRenewFilter.class);
+    register(io.hops.hopsworks.api.jwt.JWTResource.class);
     register(io.hops.hopsworks.api.jobs.ExecutionService.class);
     register(io.hops.hopsworks.api.jobs.FlinkService.class);
     register(io.hops.hopsworks.api.jobs.JobService.class);
     register(io.hops.hopsworks.api.jupyter.JupyterService.class);
     register(io.hops.hopsworks.api.serving.TfServingService.class);
+    register(io.hops.hopsworks.api.serving.inference.InferenceResource.class);
     register(io.hops.hopsworks.api.jobs.KafkaService.class);
     register(io.hops.hopsworks.api.jobs.SparkService.class);
     register(io.hops.hopsworks.api.project.DataSetService.class);

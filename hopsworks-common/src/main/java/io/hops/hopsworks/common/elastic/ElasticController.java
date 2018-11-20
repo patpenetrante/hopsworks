@@ -347,7 +347,7 @@ public class ElasticController {
     if (exists) {
       LOG.log(Level.FINE, "Elastic index found:{0}", index);
     } else {
-      LOG.log(Level.SEVERE, "Elastic index:{0} creation could not be found", index);
+      LOG.log(Level.FINE, "Elastic index:{0} could not be found", index);
     }
     return exists;
   }
@@ -361,9 +361,24 @@ public class ElasticController {
     }
   }
 
+  public void createIndexPattern(Project project, String pattern) throws ProjectException {
+    Map<String, String> params = new HashMap<>();
+    params.put("op", "POST");
+    params.put("data", "{\"attributes\": {\"title\": \"" + pattern + "\"}}");
+
+    JSONObject resp = sendKibanaReq(params, "index-pattern", pattern);
+
+    if (!(resp.has("updated_at") || (resp.has("statusCode") && resp.get("statusCode").toString().equals("409")))) {
+      throw new ProjectException(RESTCodes.ProjectErrorCode.PROJECT_KIBANA_CREATE_INDEX_ERROR, Level.SEVERE, null,
+        "project: " + project.getName() + ", resp: " + resp.toString(2), null);
+    }
+
+  }
+
   public void deleteProjectIndices(Project project) throws ServiceException {
     //Get all project indices
-    Map<String, IndexMetaData> indices = getIndices(project.getName() + "_logs-\\d{4}.\\d{2}.\\d{2}");
+    Map<String, IndexMetaData> indices = getIndices(project.getName() +
+        "_(((logs|serving)-\\d{4}.\\d{2}.\\d{2})|("+ Settings.ELASTIC_EXPERIMENTS_INDEX + "))");
     for (String index : indices.keySet()) {
       if (!deleteIndex(index)) {
         LOG.log(Level.SEVERE, "Could not delete project index:{0}", index);
@@ -751,34 +766,7 @@ public class ElasticController {
     return addr;
   }
 
-  /**
-   *
-   * @param params
-   * @return
-   */
-  public JSONObject sendElasticsearchReq(Map<String, String> params) {
-    String templateUrl;
-    if (!params.containsKey("url")) {
-      if (params.get("resource").isEmpty()) {
-        templateUrl = "http://"+settings.getElasticRESTEndpoint() + "/" + params.get("project");
-      } else {
-        templateUrl = "http://"+settings.getElasticRESTEndpoint() + "/" + params.get("resource") + "/" +
-          params.get("project");
-      }
-    } else {
-      templateUrl = params.get("url");
-    }
-    return sendELKReq(templateUrl, params, false);
-  }
-
-  /**
-   *
-   * @param templateUrl
-   * @param params
-   * @param async
-   * @return
-   */
-  public JSONObject sendELKReq(String templateUrl, Map<String, String> params, boolean async) {
+  private JSONObject sendKibanaReq(String templateUrl, Map<String, String> params, boolean async) {
     if (async) {
       ClientBuilder.newClient()
           .target(templateUrl)
@@ -793,15 +781,13 @@ public class ElasticController {
             .request()
             .header("kbn-xsrf", "required")
             .header("Content-Type", "application/json")
-            .method(params.get("op"), Entity.json(params.get("data")))
-            .readEntity(String.class));
+            .method(params.get("op"), Entity.json(params.get("data"))).readEntity(String.class));
       } else {
         return new JSONObject(ClientBuilder.newClient()
             .target(templateUrl)
             .request()
             .header("kbn-xsrf", "required")
-            .method(params.get("op"))
-            .readEntity(String.class));
+            .method(params.get("op")).readEntity(String.class));
       }
     }
   }
@@ -809,19 +795,19 @@ public class ElasticController {
   public JSONObject sendKibanaReq(Map<String, String> params) {
     String templateUrl = settings.getKibanaUri() + "/api/saved_objects";
     LOG.log(Level.INFO, templateUrl);
-    return sendELKReq(templateUrl, params, false);
+    return sendKibanaReq(templateUrl, params, false);
   }
 
   public JSONObject sendKibanaReq(Map<String, String> params, String kibanaType) {
     String templateUrl = settings.getKibanaUri() + "/api/saved_objects/" + kibanaType;
     LOG.log(Level.INFO, templateUrl);
-    return sendELKReq(templateUrl, params, false);
+    return sendKibanaReq(templateUrl, params, false);
   }
 
   public JSONObject sendKibanaReq(Map<String, String> params, String kibanaType, String id) {
     String templateUrl = settings.getKibanaUri() + "/api/saved_objects/" + kibanaType + "/" + id;
     LOG.log(Level.INFO, templateUrl);
-    return sendELKReq(templateUrl, params, false);
+    return sendKibanaReq(templateUrl, params, false);
   }
 
   public JSONObject sendKibanaReq(Map<String, String> params, String kibanaType, String id, boolean overwrite) {
@@ -832,7 +818,7 @@ public class ElasticController {
       templateUrl = settings.getKibanaUri() + "/api/saved_objects/" + kibanaType + "/" + id;
     }
     LOG.log(Level.INFO, templateUrl);
-    return sendELKReq(templateUrl, params, false);
+    return sendKibanaReq(templateUrl, params, false);
   }
 
   public String getIndexFromKibana(JSONObject json){
@@ -976,8 +962,9 @@ public class ElasticController {
   public String getLogdirFromElastic(Project project, String elasticId) throws ProjectException {
     Map<String, String> params = new HashMap<>();
     params.put("op", "GET");
+    String projectName = project.getName().toLowerCase();
 
-    String experimentsIndex = project.getName() + "_experiments";
+    String experimentsIndex = projectName + "_experiments";
 
     String templateUrl = "http://"+settings.getElasticRESTEndpoint() + "/" +
         experimentsIndex + "/experiments/" + elasticId;
@@ -985,7 +972,7 @@ public class ElasticController {
     boolean foundEntry = false;
     JSONObject resp = null;
     try {
-      resp = sendELKReq(templateUrl, params, false);
+      resp = sendKibanaReq(templateUrl, params, false);
       foundEntry = (boolean) resp.get("found");
     } catch (Exception ex) {
       throw new ProjectException(RESTCodes.ProjectErrorCode.TENSORBOARD_ELASTIC_INDEX_NOT_FOUND, Level.SEVERE,
